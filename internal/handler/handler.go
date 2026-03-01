@@ -5,14 +5,18 @@ import (
 	"net/http"
 
 	"github.com/olelishna/urlshortener/internal/model"
-	"github.com/olelishna/urlshortener/internal/storage"
 )
 
-type Handler struct {
-	store *storage.Store
+type StoreInterface interface {
+	Save(shortURL, longURL string)
+	Get(shortURL string) (string, bool)
 }
 
-func NewHandler(store *storage.Store) *Handler {
+type Handler struct {
+	store StoreInterface
+}
+
+func NewHandler(store StoreInterface) *Handler {
 	return &Handler{store: store}
 }
 

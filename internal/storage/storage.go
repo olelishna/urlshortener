@@ -1,13 +1,20 @@
 package storage
 
-import "sync"
+import (
+	"sync"
+)
+
+type StoreInterface interface {
+	Save(shortURL, longURL string)
+	Get(shortURL string) (string, bool)
+}
 
 type Store struct {
 	urls map[string]string
 	mu   sync.RWMutex
 }
 
-func NewStore() *Store {
+func NewStore() StoreInterface {
 	return &Store{
 		urls: make(map[string]string),
 	}
