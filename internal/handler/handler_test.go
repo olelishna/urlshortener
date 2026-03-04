@@ -26,14 +26,14 @@ func TestHandler_ShortenURL(t *testing.T) {
 		name           string
 		method         string
 		expectedCode   int
-		expectedUrlLen int
+		expectedURLLen int
 		body           string
 	}{
-		{name: "GET/Not Allowed", method: http.MethodGet, expectedCode: http.StatusMethodNotAllowed, expectedUrlLen: 0},
-		{name: "PUT/Not Allowed", method: http.MethodPut, expectedCode: http.StatusMethodNotAllowed, expectedUrlLen: 0},
-		{name: "DELETE/Not Allowed", method: http.MethodDelete, expectedCode: http.StatusMethodNotAllowed, expectedUrlLen: 0},
-		{name: "POST/Missing URL", method: http.MethodPost, expectedCode: http.StatusBadRequest, expectedUrlLen: 0, body: ""},
-		{name: "POST/Ok", method: http.MethodPost, expectedCode: http.StatusCreated, expectedUrlLen: 9, body: "https://practicum.yandex.ru/"},
+		{name: "GET/Not Allowed", method: http.MethodGet, expectedCode: http.StatusMethodNotAllowed, expectedURLLen: 0},
+		{name: "PUT/Not Allowed", method: http.MethodPut, expectedCode: http.StatusMethodNotAllowed, expectedURLLen: 0},
+		{name: "DELETE/Not Allowed", method: http.MethodDelete, expectedCode: http.StatusMethodNotAllowed, expectedURLLen: 0},
+		{name: "POST/Missing URL", method: http.MethodPost, expectedCode: http.StatusBadRequest, expectedURLLen: 0, body: ""},
+		{name: "POST/Ok", method: http.MethodPost, expectedCode: http.StatusCreated, expectedURLLen: 9, body: "https://practicum.yandex.ru/"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -47,12 +47,12 @@ func TestHandler_ShortenURL(t *testing.T) {
 
 			assert.Equal(t, tt.expectedCode, resp.StatusCode(), "Код ответа не совпадает с ожидаемым")
 
-			if tt.expectedUrlLen != 0 {
+			if tt.expectedURLLen != 0 {
 				rawURL := string(resp.Body())
 				parsedURL, err := url.Parse(rawURL)
 				assert.NoError(t, err, "Error parsing URL")
 
-				assert.Equal(t, tt.expectedUrlLen, len(parsedURL.Path), "Тело ответа не совпадает с ожидаемым")
+				assert.Equal(t, tt.expectedURLLen, len(parsedURL.Path), "Тело ответа не совпадает с ожидаемым")
 			}
 		})
 	}
