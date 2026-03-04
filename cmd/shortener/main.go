@@ -3,6 +3,8 @@ package main
 import (
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/olelishna/urlshortener/internal/handler"
 	"github.com/olelishna/urlshortener/internal/storage"
 )
@@ -18,11 +20,13 @@ func run() error {
 	store := storage.NewStore()
 	hand := handler.NewHandler(store)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc(`/`, hand.ShortenURL)
-	mux.HandleFunc(`/{id}`, hand.RedirectURL)
+	r := chi.NewRouter()
+	r.Use(middleware.CleanPath, middleware.Recoverer)
 
-	err := http.ListenAndServe(`:8080`, mux)
+	r.Post("/", hand.ShortenURL)
+	r.Get("/{id}", hand.RedirectURL)
+
+	err := http.ListenAndServe(`:8080`, r)
 	if err != nil {
 		panic(err)
 	}
