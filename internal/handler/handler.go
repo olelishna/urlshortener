@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/model"
 )
 
@@ -42,11 +43,9 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 	shortURL := model.GenerateShortURL()
 	h.store.Save(shortURL, longURL)
 
-	host := "http://" + req.Host + req.RequestURI
-
 	res.Header().Set("content-type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
-	res.Write([]byte(host + shortURL))
+	res.Write([]byte(config.FlagBaseUrlResult + shortURL))
 
 }
 
