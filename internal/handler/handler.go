@@ -45,7 +45,7 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 
 	res.Header().Set("content-type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
-	res.Write([]byte(config.FlagBaseURLResult + shortURL))
+	res.Write([]byte(config.FlagBaseURLResult + "/" + shortURL))
 
 }
 

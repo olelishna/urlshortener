@@ -33,7 +33,7 @@ func TestHandler_ShortenURL(t *testing.T) {
 		{name: "PUT/Not Allowed", method: http.MethodPut, expectedCode: http.StatusMethodNotAllowed, expectedURLLen: 0},
 		{name: "DELETE/Not Allowed", method: http.MethodDelete, expectedCode: http.StatusMethodNotAllowed, expectedURLLen: 0},
 		{name: "POST/Missing URL", method: http.MethodPost, expectedCode: http.StatusBadRequest, expectedURLLen: 0, body: ""},
-		{name: "POST/Ok", method: http.MethodPost, expectedCode: http.StatusCreated, expectedURLLen: 8, body: "https://practicum.yandex.ru/"},
+		{name: "POST/Ok", method: http.MethodPost, expectedCode: http.StatusCreated, expectedURLLen: 9, body: "https://practicum.yandex.ru/"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
