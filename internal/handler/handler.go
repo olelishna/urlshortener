@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/model"
 )
@@ -22,11 +23,6 @@ func NewHandler(store StoreInterface) *Handler {
 }
 
 func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
-
-	if req.Method != http.MethodPost {
-		http.Error(res, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
 
 	longURLRaw, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -51,12 +47,7 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 
 func (h *Handler) RedirectURL(res http.ResponseWriter, req *http.Request) {
 
-	if req.Method != http.MethodGet {
-		http.Error(res, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	shortURL := req.URL.Path[1:]
+	shortURL := chi.URLParam(req, "id")
 
 	longURL, exists := h.store.Get(shortURL)
 	if !exists {

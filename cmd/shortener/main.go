@@ -34,7 +34,7 @@ func run() error {
 
 	err := http.ListenAndServe(config.FlagRunAddr, r)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	return nil
 }

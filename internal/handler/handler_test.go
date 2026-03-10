@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-resty/resty/v2"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"github.com/stretchr/testify/assert"
@@ -18,8 +20,11 @@ func TestHandler_ShortenURL(t *testing.T) {
 		store: store,
 	}
 
-	handler := http.HandlerFunc(h.ShortenURL)
-	srv := httptest.NewServer(handler)
+	r := chi.NewRouter()
+	r.Use(middleware.CleanPath, middleware.Recoverer)
+	r.Post("/", h.ShortenURL)
+
+	srv := httptest.NewServer(r)
 	defer srv.Close()
 
 	tests := []struct {
@@ -67,8 +72,11 @@ func TestHandler_RedirectURL(t *testing.T) {
 		store: store,
 	}
 
-	handler := http.HandlerFunc(h.RedirectURL)
-	srv := httptest.NewServer(handler)
+	r := chi.NewRouter()
+	r.Use(middleware.CleanPath, middleware.Recoverer)
+	r.Get("/{id}", h.RedirectURL)
+
+	srv := httptest.NewServer(r)
 	defer srv.Close()
 
 	tests := []struct {
@@ -77,9 +85,9 @@ func TestHandler_RedirectURL(t *testing.T) {
 		expectedCode int
 		hash         string
 	}{
-		{name: "POST/Not Allowed", method: http.MethodPost, expectedCode: http.StatusMethodNotAllowed},
-		{name: "PUT/Not Allowed", method: http.MethodPut, expectedCode: http.StatusMethodNotAllowed},
-		{name: "DELETE/Not Allowed", method: http.MethodDelete, expectedCode: http.StatusMethodNotAllowed},
+		{name: "POST/Not Allowed", method: http.MethodPost, expectedCode: http.StatusMethodNotAllowed, hash: "shorturl"},
+		{name: "PUT/Not Allowed", method: http.MethodPut, expectedCode: http.StatusMethodNotAllowed, hash: "shorturl"},
+		{name: "DELETE/Not Allowed", method: http.MethodDelete, expectedCode: http.StatusMethodNotAllowed, hash: "shorturl"},
 		{name: "GET/URL not found", method: http.MethodGet, expectedCode: http.StatusNotFound, hash: "12345678"},
 		{name: "GET/Ok", method: http.MethodGet, expectedCode: http.StatusOK, hash: "shorturl"},
 	}
