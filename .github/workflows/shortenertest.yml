@@ -18,7 +18,7 @@ jobs:
 
   shortenertest:
     runs-on: ubuntu-latest
-    container: golang:1.24
+    container: golang:1.26
     needs: branchtest
 
     env:
@@ -208,9 +208,7 @@ jobs:
           github.head_ref == 'iter24'
         run: |
           SERVER_PORT=$(random unused-port)
-          shortenertest -test.v -test.run=^TestIteration5$ \
-              -binary-path=cmd/shortener/shortener \
-              -server-port=$SERVER_PORT
+          shortenertest -test.v -test.run=^TestIteration5$ -binary-path=cmd/shortener/shortener -server-port=$SERVER_PORT
 
       - name: "Code increment #6"
         if: |
