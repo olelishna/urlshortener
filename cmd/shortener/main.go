@@ -20,7 +20,6 @@ func main() {
 }
 
 func run() error {
-
 	fmt.Println("Running server on", config.FlagRunAddr)
 
 	store := storage.NewStore()
@@ -36,5 +35,6 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }

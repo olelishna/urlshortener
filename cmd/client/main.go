@@ -10,12 +10,12 @@ import (
 )
 
 func main() {
-
 	endpoint := "http://localhost:8080/"
 
 	fmt.Println("Введите длинный URL")
 
 	reader := bufio.NewReader(os.Stdin)
+
 	long, err := reader.ReadString('\n')
 	if err != nil {
 		panic(err)

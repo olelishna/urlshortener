@@ -1,4 +1,4 @@
-package handler
+package handler_test
 
 import (
 	"net/http"
@@ -9,15 +9,15 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-resty/resty/v2"
+	"github.com/olelishna/urlshortener/internal/handler"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestHandler_ShortenURL(t *testing.T) {
-
 	store := storage.NewStore()
-	h := &Handler{
-		store: store,
+	h := &handler.Handler{
+		Store: store,
 	}
 
 	r := chi.NewRouter()
@@ -34,11 +34,38 @@ func TestHandler_ShortenURL(t *testing.T) {
 		expectedURLLen int
 		body           string
 	}{
-		{name: "GET/Not Allowed", method: http.MethodGet, expectedCode: http.StatusMethodNotAllowed, expectedURLLen: 0},
-		{name: "PUT/Not Allowed", method: http.MethodPut, expectedCode: http.StatusMethodNotAllowed, expectedURLLen: 0},
-		{name: "DELETE/Not Allowed", method: http.MethodDelete, expectedCode: http.StatusMethodNotAllowed, expectedURLLen: 0},
-		{name: "POST/Missing URL", method: http.MethodPost, expectedCode: http.StatusBadRequest, expectedURLLen: 0, body: ""},
-		{name: "POST/Ok", method: http.MethodPost, expectedCode: http.StatusCreated, expectedURLLen: 9, body: "https://practicum.yandex.ru/"},
+		{
+			name:           "GET/Not Allowed",
+			method:         http.MethodGet,
+			expectedCode:   http.StatusMethodNotAllowed,
+			expectedURLLen: 0,
+		},
+		{
+			name:           "PUT/Not Allowed",
+			method:         http.MethodPut,
+			expectedCode:   http.StatusMethodNotAllowed,
+			expectedURLLen: 0,
+		},
+		{
+			name:           "DELETE/Not Allowed",
+			method:         http.MethodDelete,
+			expectedCode:   http.StatusMethodNotAllowed,
+			expectedURLLen: 0,
+		},
+		{
+			name:           "POST/Missing URL",
+			method:         http.MethodPost,
+			expectedCode:   http.StatusBadRequest,
+			expectedURLLen: 0,
+			body:           "",
+		},
+		{
+			name:           "POST/Ok",
+			method:         http.MethodPost,
+			expectedCode:   http.StatusCreated,
+			expectedURLLen: 9,
+			body:           "https://practicum.yandex.ru/",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,26 +77,35 @@ func TestHandler_ShortenURL(t *testing.T) {
 			resp, err := req.Send()
 			assert.NoError(t, err, "error making HTTP request")
 
-			assert.Equal(t, tt.expectedCode, resp.StatusCode(), "Код ответа не совпадает с ожидаемым")
+			assert.Equal(
+				t,
+				tt.expectedCode,
+				resp.StatusCode(),
+				"Код ответа не совпадает с ожидаемым",
+			)
 
 			if tt.expectedURLLen != 0 {
 				rawURL := string(resp.Body())
 				parsedURL, err := url.Parse(rawURL)
 				assert.NoError(t, err, "Error parsing URL")
 
-				assert.Equal(t, tt.expectedURLLen, len(parsedURL.Path), "Тело ответа не совпадает с ожидаемым")
+				assert.Equal(
+					t,
+					tt.expectedURLLen,
+					len(parsedURL.Path),
+					"Тело ответа не совпадает с ожидаемым",
+				)
 			}
 		})
 	}
 }
 
 func TestHandler_RedirectURL(t *testing.T) {
-
 	store := storage.NewStore()
 	store.Save("shorturl", "https://www.google.com/")
 
-	h := &Handler{
-		store: store,
+	h := &handler.Handler{
+		Store: store,
 	}
 
 	r := chi.NewRouter()
@@ -85,10 +121,30 @@ func TestHandler_RedirectURL(t *testing.T) {
 		expectedCode int
 		hash         string
 	}{
-		{name: "POST/Not Allowed", method: http.MethodPost, expectedCode: http.StatusMethodNotAllowed, hash: "shorturl"},
-		{name: "PUT/Not Allowed", method: http.MethodPut, expectedCode: http.StatusMethodNotAllowed, hash: "shorturl"},
-		{name: "DELETE/Not Allowed", method: http.MethodDelete, expectedCode: http.StatusMethodNotAllowed, hash: "shorturl"},
-		{name: "GET/URL not found", method: http.MethodGet, expectedCode: http.StatusNotFound, hash: "12345678"},
+		{
+			name:         "POST/Not Allowed",
+			method:       http.MethodPost,
+			expectedCode: http.StatusMethodNotAllowed,
+			hash:         "shorturl",
+		},
+		{
+			name:         "PUT/Not Allowed",
+			method:       http.MethodPut,
+			expectedCode: http.StatusMethodNotAllowed,
+			hash:         "shorturl",
+		},
+		{
+			name:         "DELETE/Not Allowed",
+			method:       http.MethodDelete,
+			expectedCode: http.StatusMethodNotAllowed,
+			hash:         "shorturl",
+		},
+		{
+			name:         "GET/URL not found",
+			method:       http.MethodGet,
+			expectedCode: http.StatusNotFound,
+			hash:         "12345678",
+		},
 		{name: "GET/Ok", method: http.MethodGet, expectedCode: http.StatusOK, hash: "shorturl"},
 	}
 	for _, tt := range tests {
@@ -100,8 +156,12 @@ func TestHandler_RedirectURL(t *testing.T) {
 			resp, err := req.Send()
 			assert.NoError(t, err, "error making HTTP request")
 
-			assert.Equal(t, tt.expectedCode, resp.StatusCode(), "Код ответа не совпадает с ожидаемым")
-
+			assert.Equal(
+				t,
+				tt.expectedCode,
+				resp.StatusCode(),
+				"Код ответа не совпадает с ожидаемым",
+			)
 		})
 	}
 }
