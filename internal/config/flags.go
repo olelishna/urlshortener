@@ -8,6 +8,7 @@ import (
 var (
 	FlagRunAddr       string
 	FlagBaseURLResult string
+	FlagLogLevel      string
 )
 
 func ParseFlags() {
@@ -18,6 +19,7 @@ func ParseFlags() {
 		"http://localhost:8080",
 		"base address for shortened url",
 	)
+	flag.StringVar(&FlagLogLevel, "l", "info", "log level")
 	flag.Parse()
 
 	if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
@@ -26,5 +28,9 @@ func ParseFlags() {
 
 	if envBaseURLResult := os.Getenv("BASE_URL"); envBaseURLResult != "" {
 		FlagBaseURLResult = envBaseURLResult
+	}
+
+	if envLogLevel := os.Getenv("LOG_LEVEL"); envLogLevel != "" {
+		FlagLogLevel = envLogLevel
 	}
 }
