@@ -35,6 +35,7 @@ func run() error {
 
 	r.Post("/", hand.ShortenURL)
 	r.Get("/{id}", hand.RedirectURL)
+	r.Post("/api/shorten", hand.ShortenURLJson)
 
 	if err := http.ListenAndServe(config.FlagRunAddr, r); err != nil {
 		return err

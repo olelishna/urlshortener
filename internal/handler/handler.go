@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/olelishna/urlshortener/internal/config"
+	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
+	"go.uber.org/zap"
 )
 
 type StoreInterface interface {
@@ -56,4 +59,37 @@ func (h *Handler) RedirectURL(res http.ResponseWriter, req *http.Request) {
 	}
 
 	http.Redirect(res, req, longURL, http.StatusTemporaryRedirect)
+}
+
+func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
+	logger.Log.Debug("decoding request")
+
+	var shreq model.ShortenRequest
+
+	dec := json.NewDecoder(req.Body)
+	if err := dec.Decode(&shreq); err != nil {
+		logger.Log.Debug("cannot decode request JSON body", zap.Error(err))
+		res.WriteHeader(http.StatusInternalServerError)
+
+		return
+	}
+
+	shortURL := model.GenerateShortURL()
+	h.Store.Save(shortURL, shreq.URL)
+
+	result := model.ShortenResponse{
+		Result: config.FlagBaseURLResult + "/" + shortURL,
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusCreated)
+
+	enc := json.NewEncoder(res)
+	if err := enc.Encode(result); err != nil {
+		logger.Log.Debug("error encoding response", zap.Error(err))
+
+		return
+	}
+
+	logger.Log.Debug("sending HTTP 201 response")
 }
