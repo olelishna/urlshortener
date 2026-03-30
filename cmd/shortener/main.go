@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/olelishna/urlshortener/internal/compress"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/handler"
 	"github.com/olelishna/urlshortener/internal/logger"
@@ -31,7 +32,12 @@ func run() error {
 	hand := handler.NewHandler(store)
 
 	r := chi.NewRouter()
-	r.Use(middleware.CleanPath, middleware.Recoverer, logger.MiddlewareLogger)
+	r.Use(
+		middleware.CleanPath,
+		middleware.Recoverer,
+		logger.MiddlewareLogger,
+		compress.MiddlewareGzip,
+	)
 
 	r.Post("/", hand.ShortenURL)
 	r.Get("/{id}", hand.RedirectURL)

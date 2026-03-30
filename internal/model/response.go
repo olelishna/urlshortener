@@ -1,5 +1,5 @@
 package model
 
 type ShortenResponse struct {
-	Result string `json:"result"`
+	Result string `json:"result" validate:"required,url"`
 }

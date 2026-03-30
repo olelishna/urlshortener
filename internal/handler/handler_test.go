@@ -1,6 +1,10 @@
 package handler_test
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -8,20 +12,31 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-playground/validator/v10"
 	"github.com/go-resty/resty/v2"
+	"github.com/olelishna/urlshortener/internal/compress"
+	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/handler"
+	"github.com/olelishna/urlshortener/internal/logger"
+	"github.com/olelishna/urlshortener/internal/model"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestHandler_ShortenURL(t *testing.T) {
+func TestShortenURL(t *testing.T) {
 	store := storage.NewStore()
 	h := &handler.Handler{
 		Store: store,
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.CleanPath, middleware.Recoverer)
+	r.Use(
+		middleware.CleanPath,
+		middleware.Recoverer,
+		logger.MiddlewareLogger,
+		compress.MiddlewareGzip,
+	)
 	r.Post("/", h.ShortenURL)
 
 	srv := httptest.NewServer(r)
@@ -100,7 +115,7 @@ func TestHandler_ShortenURL(t *testing.T) {
 	}
 }
 
-func TestHandler_RedirectURL(t *testing.T) {
+func TestRedirectURL(t *testing.T) {
 	store := storage.NewStore()
 	store.Save("shorturl", "https://www.google.com/")
 
@@ -109,7 +124,12 @@ func TestHandler_RedirectURL(t *testing.T) {
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.CleanPath, middleware.Recoverer)
+	r.Use(
+		middleware.CleanPath,
+		middleware.Recoverer,
+		logger.MiddlewareLogger,
+		compress.MiddlewareGzip,
+	)
 	r.Get("/{id}", h.RedirectURL)
 
 	srv := httptest.NewServer(r)
@@ -164,4 +184,96 @@ func TestHandler_RedirectURL(t *testing.T) {
 			)
 		})
 	}
+}
+
+func TestGzipCompression(t *testing.T) {
+	config.ParseFlags()
+
+	store := storage.NewStore()
+
+	h := &handler.Handler{
+		Store: store,
+	}
+
+	r := chi.NewRouter()
+	r.Use(
+		middleware.CleanPath,
+		middleware.Recoverer,
+		logger.MiddlewareLogger,
+		compress.MiddlewareGzip,
+	)
+	r.Post("/api/shorten", h.ShortenURLJson)
+
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	requestBody := `{
+		"url": "https://practicum.yandex.ru/"
+	}`
+
+	t.Run("sends_gzip", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		zb := gzip.NewWriter(buf)
+		_, err := zb.Write([]byte(requestBody))
+		require.NoError(t, err)
+		err = zb.Close()
+		require.NoError(t, err)
+
+		req := resty.New().R()
+		req.Method = http.MethodPost
+		req.URL = srv.URL + "/api/shorten"
+		req.SetBody(buf)
+		req.Header.Set("Content-Encoding", "gzip")
+		req.Header.Set("Accept-Encoding", "")
+
+		resp, err := req.Send()
+
+		require.NoError(t, err, "error making HTTP request")
+		require.Equal(
+			t,
+			http.StatusCreated,
+			resp.StatusCode(),
+			"Код ответа не совпадает с ожидаемым",
+		)
+
+		body := resp.Body()
+		dec := json.NewDecoder(bytes.NewReader(body))
+
+		var shresp model.ShortenResponse
+
+		err = dec.Decode(&shresp)
+		require.NoError(t, err)
+
+		validate := validator.New()
+		assert.NoError(t, validate.Struct(shresp))
+	})
+
+	t.Run("accepts_gzip", func(t *testing.T) {
+		buf := bytes.NewBufferString(requestBody)
+		r := httptest.NewRequest(http.MethodPost, srv.URL+"/api/shorten", buf)
+		r.RequestURI = ""
+		r.Header.Set("Accept-Encoding", "gzip")
+
+		resp, err := http.DefaultClient.Do(r)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+		defer resp.Body.Close()
+
+		zr, err := gzip.NewReader(resp.Body)
+		require.NoError(t, err)
+
+		body, err := io.ReadAll(zr)
+		require.NoError(t, err)
+
+		dec := json.NewDecoder(bytes.NewReader(body))
+
+		var shresp model.ShortenResponse
+
+		err = dec.Decode(&shresp)
+		require.NoError(t, err)
+
+		validate := validator.New()
+		assert.NoError(t, validate.Struct(shresp))
+	})
 }
