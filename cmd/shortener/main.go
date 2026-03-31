@@ -9,6 +9,7 @@ import (
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/handler"
 	"github.com/olelishna/urlshortener/internal/logger"
+	"github.com/olelishna/urlshortener/internal/repository"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"go.uber.org/zap"
 )
@@ -28,7 +29,8 @@ func main() {
 func run() error {
 	logger.Log.Info("Running server", zap.String("addr", config.FlagRunAddr))
 
-	store := storage.NewStore()
+	fileStorage := repository.NewFileStorage()
+	store := storage.NewStore(fileStorage)
 	hand := handler.NewHandler(store)
 
 	r := chi.NewRouter()

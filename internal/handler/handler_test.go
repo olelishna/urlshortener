@@ -21,11 +21,24 @@ import (
 	"github.com/olelishna/urlshortener/internal/model"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
+type StorageMock struct {
+	mock.Mock
+}
+
+func (s *StorageMock) LoadData() map[string]string {
+	return make(map[string]string)
+}
+
+func (s *StorageMock) SaveEntry(model.Entry) error {
+	return nil
+}
+
 func TestShortenURL(t *testing.T) {
-	store := storage.NewStore()
+	store := storage.NewStore(new(StorageMock))
 	h := &handler.Handler{
 		Store: store,
 	}
@@ -116,8 +129,10 @@ func TestShortenURL(t *testing.T) {
 }
 
 func TestRedirectURL(t *testing.T) {
-	store := storage.NewStore()
-	store.Save("shorturl", "https://www.google.com/")
+	store := storage.NewStore(new(StorageMock))
+	if err := store.Save("shorturl", "https://www.google.com/"); err != nil {
+		return
+	}
 
 	h := &handler.Handler{
 		Store: store,
@@ -189,7 +204,7 @@ func TestRedirectURL(t *testing.T) {
 func TestGzipCompression(t *testing.T) {
 	config.ParseFlags()
 
-	store := storage.NewStore()
+	store := storage.NewStore(new(StorageMock))
 
 	h := &handler.Handler{
 		Store: store,

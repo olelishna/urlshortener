@@ -9,19 +9,15 @@ import (
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
+	"github.com/olelishna/urlshortener/internal/storage"
 	"go.uber.org/zap"
 )
 
-type StoreInterface interface {
-	Save(shortURL, longURL string)
-	Get(shortURL string) (string, bool)
-}
-
 type Handler struct {
-	Store StoreInterface
+	Store storage.StoreInterface
 }
 
-func NewHandler(store StoreInterface) *Handler {
+func NewHandler(store storage.StoreInterface) *Handler {
 	return &Handler{Store: store}
 }
 
@@ -41,7 +37,11 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 	}
 
 	shortURL := model.GenerateShortURL()
-	h.Store.Save(shortURL, longURL)
+
+	err = h.Store.Save(shortURL, longURL)
+	if err != nil {
+		return
+	}
 
 	res.Header().Set("content-type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
@@ -75,7 +75,11 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 	}
 
 	shortURL := model.GenerateShortURL()
-	h.Store.Save(shortURL, shreq.URL)
+
+	err := h.Store.Save(shortURL, shreq.URL)
+	if err != nil {
+		return
+	}
 
 	result := model.ShortenResponse{
 		Result: config.FlagBaseURLResult + "/" + shortURL,
