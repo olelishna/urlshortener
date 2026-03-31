@@ -21,7 +21,7 @@ func ParseFlags() {
 		"base address for shortened url",
 	)
 	flag.StringVar(&FlagLogLevel, "l", "info", "log level")
-	flag.StringVar(&FlagFileStoragePath, "f", "./data/data.json", "file storage path")
+	flag.StringVar(&FlagFileStoragePath, "f", "data/data.json", "file storage path")
 	flag.Parse()
 
 	if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
