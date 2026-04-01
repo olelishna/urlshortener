@@ -24,19 +24,19 @@ func ParseFlags() {
 	flag.StringVar(&FlagFileStoragePath, "f", "data/data.json", "file storage path")
 	flag.Parse()
 
-	if envRunAddr := os.Getenv("SERVER_ADDRESS"); envRunAddr != "" {
+	if envRunAddr, ok := os.LookupEnv("SERVER_ADDRESS"); ok {
 		FlagRunAddr = envRunAddr
 	}
 
-	if envBaseURLResult := os.Getenv("BASE_URL"); envBaseURLResult != "" {
+	if envBaseURLResult, ok := os.LookupEnv("BASE_URL"); ok {
 		FlagBaseURLResult = envBaseURLResult
 	}
 
-	if envLogLevel := os.Getenv("LOG_LEVEL"); envLogLevel != "" {
+	if envLogLevel, ok := os.LookupEnv("LOG_LEVEL"); ok {
 		FlagLogLevel = envLogLevel
 	}
 
-	if envFileStoragePath := os.Getenv("FILE_STORAGE_PATH"); envFileStoragePath != "" {
+	if envFileStoragePath, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
 		FlagFileStoragePath = envFileStoragePath
 	}
 }

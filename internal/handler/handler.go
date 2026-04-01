@@ -38,8 +38,10 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 
 	shortURL := model.GenerateShortURL()
 
-	err = h.Store.Save(shortURL, longURL)
+	err = h.Store.Save(req.Context(), shortURL, longURL)
 	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+
 		return
 	}
 
@@ -51,7 +53,13 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 func (h *Handler) RedirectURL(res http.ResponseWriter, req *http.Request) {
 	shortURL := chi.URLParam(req, "id")
 
-	longURL, exists := h.Store.Get(shortURL)
+	longURL, exists, err := h.Store.Get(req.Context(), shortURL)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
 	if !exists {
 		http.Error(res, "URL not found", http.StatusNotFound)
 
@@ -76,8 +84,10 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 
 	shortURL := model.GenerateShortURL()
 
-	err := h.Store.Save(shortURL, shreq.URL)
+	err := h.Store.Save(req.Context(), shortURL, shreq.URL)
 	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+
 		return
 	}
 
