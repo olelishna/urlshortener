@@ -21,15 +21,9 @@ type Store struct {
 }
 
 func NewStore(ctx context.Context, persistentStorage repository.PersistentStorage) StoreInterface {
-	urls := make(map[string]string)
-
-	if persistentStorage != nil {
-		data, err := persistentStorage.LoadData(ctx)
-		if err != nil {
-			panic(err)
-		}
-
-		urls = data
+	urls, err := persistentStorage.LoadData(ctx)
+	if err != nil {
+		panic(err)
 	}
 
 	return &Store{
@@ -57,10 +51,8 @@ func (s *Store) Save(ctx context.Context, shortURL, longURL string) error {
 			OriginalURL: longURL,
 		}
 
-		if s.persistentStorage != nil {
-			if err := s.persistentStorage.SaveEntry(ctx, entry); err != nil {
-				chSave <- err
-			}
+		if err := s.persistentStorage.SaveEntry(ctx, entry); err != nil {
+			chSave <- err
 		}
 
 		chSave <- nil
