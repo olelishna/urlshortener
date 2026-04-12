@@ -22,14 +22,8 @@ func ParseFlags() {
 		"base address for shortened url",
 	)
 	flag.StringVar(&FlagLogLevel, "l", "info", "log level")
-	flag.StringVar(&FlagFileStoragePath, "f", "data/data.json", "file storage path")
-
-	flag.StringVar(
-		&FlagDatabaseDSN,
-		"d",
-		"postgres://urlshortener:q1w2e3r4t5@localhost/urlshortener?sslmode=disable",
-		"database DSN",
-	)
+	flag.StringVar(&FlagFileStoragePath, "f", "", "file storage path")
+	flag.StringVar(&FlagDatabaseDSN, "d", "", "database DSN")
 
 	flag.Parse()
 

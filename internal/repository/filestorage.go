@@ -2,10 +2,10 @@ package repository
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"os"
 
-	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/model"
 )
 
@@ -14,13 +14,13 @@ type FileStorage struct {
 	consumer *Consumer
 }
 
-func NewFileStorage() *FileStorage {
-	producer, err := NewProducer(config.FlagFileStoragePath)
+func NewFileStorage(filepath string) *FileStorage {
+	producer, err := NewProducer(filepath)
 	if err != nil {
 		panic(err)
 	}
 
-	consumer, err := NewConsumer(config.FlagFileStoragePath)
+	consumer, err := NewConsumer(filepath)
 	if err != nil {
 		panic(err)
 	}
@@ -31,7 +31,7 @@ func NewFileStorage() *FileStorage {
 	}
 }
 
-func (f *FileStorage) LoadData() map[string]string {
+func (f *FileStorage) LoadData(ctx context.Context) (map[string]string, error) {
 	defer f.consumer.Close()
 
 	urls := make(map[string]string)
@@ -39,7 +39,7 @@ func (f *FileStorage) LoadData() map[string]string {
 	for {
 		entry, err := f.consumer.ReadEntry()
 		if err != nil {
-			return nil
+			return nil, err
 		}
 
 		if entry == nil {
@@ -49,10 +49,10 @@ func (f *FileStorage) LoadData() map[string]string {
 		urls[entry.ShortURL] = entry.OriginalURL
 	}
 
-	return urls
+	return urls, nil
 }
 
-func (f *FileStorage) SaveEntry(entry model.Entry) error {
+func (f *FileStorage) SaveEntry(ctx context.Context, entry model.Entry) error {
 	if err := f.producer.WriteEntry(&entry); err != nil {
 		return err
 	}

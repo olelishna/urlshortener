@@ -30,16 +30,16 @@ type PersistentStorageMock struct {
 	mock.Mock
 }
 
-func (s *PersistentStorageMock) LoadData() map[string]string {
-	return make(map[string]string)
+func (s *PersistentStorageMock) LoadData(ctx context.Context) (map[string]string, error) {
+	return make(map[string]string), nil
 }
 
-func (s *PersistentStorageMock) SaveEntry(model.Entry) error {
+func (s *PersistentStorageMock) SaveEntry(ctx context.Context, entry model.Entry) error {
 	return nil
 }
 
 func TestShortenURL(t *testing.T) {
-	store := storage.NewStore(new(PersistentStorageMock))
+	store := storage.NewStore(context.Background(), new(PersistentStorageMock))
 	h := &handler.Handler{
 		Store: store,
 	}
@@ -130,7 +130,7 @@ func TestShortenURL(t *testing.T) {
 }
 
 func TestRedirectURL(t *testing.T) {
-	store := storage.NewStore(new(PersistentStorageMock))
+	store := storage.NewStore(context.Background(), new(PersistentStorageMock))
 	if err := store.Save(
 		context.Background(),
 		"shorturl",
@@ -209,7 +209,7 @@ func TestRedirectURL(t *testing.T) {
 func TestGzipCompression(t *testing.T) {
 	config.ParseFlags()
 
-	store := storage.NewStore(new(PersistentStorageMock))
+	store := storage.NewStore(context.Background(), new(PersistentStorageMock))
 
 	h := &handler.Handler{
 		Store: store,

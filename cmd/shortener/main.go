@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olelishna/urlshortener/internal/compress"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/handler"
@@ -40,8 +41,21 @@ func main() {
 func run() error {
 	logger.Log.Info("Running server", zap.String("addr", config.FlagRunAddr))
 
-	fileStorage := repository.NewFileStorage()
-	store := storage.NewStore(fileStorage)
+	var persistentStorage repository.PersistentStorage
+	if config.FlagDatabaseDSN != "" {
+
+		pool, err := pgxpool.New(context.Background(), config.FlagDatabaseDSN)
+		if err != nil {
+			panic(err)
+		}
+		defer pool.Close()
+
+		persistentStorage = repository.NewDBStorage(pool)
+	} else if config.FlagFileStoragePath != "" {
+		persistentStorage = repository.NewFileStorage(config.FlagFileStoragePath)
+	}
+
+	store := storage.NewStore(context.Background(), persistentStorage)
 	hand := handler.NewHandler(store)
 
 	r := chi.NewRouter()
@@ -62,7 +76,7 @@ func run() error {
 
 	go func() {
 		exit := make(chan os.Signal, 1)
-		signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM)
+		signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 
 		<-exit
 		cancel()
