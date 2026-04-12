@@ -1,8 +1,9 @@
-package model
+package model_test
 
 import (
 	"testing"
 
+	"github.com/olelishna/urlshortener/internal/model"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,8 +17,7 @@ func TestGenerateShortURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
-			got := GenerateShortURL()
+			got := model.GenerateShortURL()
 
 			assert.IsType(t, "string", got)
 			assert.Equal(t, len(got), 8)
