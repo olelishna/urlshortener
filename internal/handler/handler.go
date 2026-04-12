@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
@@ -106,4 +107,19 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 	}
 
 	logger.Log.Debug("sending HTTP 201 response")
+}
+
+func (h *Handler) PingDB(res http.ResponseWriter, req *http.Request) {
+	conn, err := pgx.Connect(req.Context(), config.FlagDatabaseDSN)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	defer conn.Close(req.Context())
+
+	res.Header().Set("content-type", "text/plain")
+	res.WriteHeader(http.StatusOK)
+	res.Write([]byte("Pong"))
 }

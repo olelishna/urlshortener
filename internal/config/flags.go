@@ -10,6 +10,7 @@ var (
 	FlagBaseURLResult   string
 	FlagLogLevel        string
 	FlagFileStoragePath string
+	FlagDatabaseDSN     string
 )
 
 func ParseFlags() {
@@ -22,6 +23,14 @@ func ParseFlags() {
 	)
 	flag.StringVar(&FlagLogLevel, "l", "info", "log level")
 	flag.StringVar(&FlagFileStoragePath, "f", "data/data.json", "file storage path")
+
+	flag.StringVar(
+		&FlagDatabaseDSN,
+		"d",
+		"postgres://urlshortener:q1w2e3r4t5@localhost/urlshortener?sslmode=disable",
+		"database DSN",
+	)
+
 	flag.Parse()
 
 	if envRunAddr, ok := os.LookupEnv("SERVER_ADDRESS"); ok {
@@ -38,5 +47,9 @@ func ParseFlags() {
 
 	if envFileStoragePath, ok := os.LookupEnv("FILE_STORAGE_PATH"); ok {
 		FlagFileStoragePath = envFileStoragePath
+	}
+
+	if envDatabaseDSN, ok := os.LookupEnv("DATABASE_DSN"); ok {
+		FlagDatabaseDSN = envDatabaseDSN
 	}
 }

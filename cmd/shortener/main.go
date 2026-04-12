@@ -55,6 +55,7 @@ func run() error {
 	r.Post("/", hand.ShortenURL)
 	r.Get("/{id}", hand.RedirectURL)
 	r.Post("/api/shorten", hand.ShortenURLJson)
+	r.Get("/ping", hand.PingDB)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
