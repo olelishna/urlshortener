@@ -60,6 +60,16 @@ func (f *FileStorage) SaveEntry(ctx context.Context, entry model.Entry) error {
 	return nil
 }
 
+func (f *FileStorage) SaveEntries(ctx context.Context, entries []model.Entry) error {
+	for _, entry := range entries {
+		if err := f.producer.WriteEntry(&entry); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 type Producer struct {
 	file   *os.File
 	writer *bufio.Writer

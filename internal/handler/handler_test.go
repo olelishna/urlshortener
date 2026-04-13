@@ -38,6 +38,10 @@ func (s *PersistentStorageMock) SaveEntry(ctx context.Context, entry model.Entry
 	return nil
 }
 
+func (s *PersistentStorageMock) SaveEntries(ctx context.Context, entries []model.Entry) error {
+	return nil
+}
+
 func TestShortenURL(t *testing.T) {
 	store := storage.NewStore(context.Background(), new(PersistentStorageMock))
 	h := &handler.Handler{

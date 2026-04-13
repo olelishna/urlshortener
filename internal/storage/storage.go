@@ -10,8 +10,14 @@ import (
 )
 
 type StoreInterface interface {
-	Save(ctx context.Context, shortURL, longURL string) error
+	Save(ctx context.Context, shortURL string, longURL string) error
+	SaveBatch(ctx context.Context, items []SaveBatchItem) error
 	Get(ctx context.Context, shortURL string) (string, bool, error)
+}
+
+type SaveBatchItem struct {
+	ShortURL string
+	LongURL  string
 }
 
 type Store struct {
@@ -32,7 +38,7 @@ func NewStore(ctx context.Context, persistentStorage repository.PersistentStorag
 	}
 }
 
-func (s *Store) Save(ctx context.Context, shortURL, longURL string) error {
+func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error {
 	chSave := make(chan error)
 
 	go func() {
@@ -52,6 +58,47 @@ func (s *Store) Save(ctx context.Context, shortURL, longURL string) error {
 		}
 
 		if err := s.persistentStorage.SaveEntry(ctx, entry); err != nil {
+			chSave <- err
+		}
+
+		chSave <- nil
+	}()
+
+	select {
+	case err := <-chSave:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *Store) SaveBatch(ctx context.Context, items []SaveBatchItem) error {
+	chSave := make(chan error)
+
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		var entries []model.Entry
+
+		for _, item := range items {
+			s.urls[item.ShortURL] = item.LongURL
+
+			uuidEntry, err := uuid.NewUUID()
+			if err != nil {
+				chSave <- err
+			}
+
+			entry := model.Entry{
+				UUID:        uuidEntry,
+				ShortURL:    item.ShortURL,
+				OriginalURL: item.LongURL,
+			}
+
+			entries = append(entries, entry)
+		}
+
+		if err := s.persistentStorage.SaveEntries(ctx, entries); err != nil {
 			chSave <- err
 		}
 
