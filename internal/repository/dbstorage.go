@@ -5,7 +5,9 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olelishna/urlshortener/internal/model"
 )
@@ -17,6 +19,11 @@ const (
 type DBStorage struct {
 	pool *pgxpool.Pool
 }
+
+var (
+	ErrNonUnique   = errors.New("data conflict")
+	ErrEmptyString = errors.New("no empty string allowed")
+)
 
 func NewDBStorage(ctx context.Context, pool *pgxpool.Pool) (*DBStorage, error) {
 	ctxT, cancel := context.WithTimeout(ctx, _queryTimeOut)
@@ -76,11 +83,18 @@ func (db *DBStorage) SaveEntry(ctx context.Context, entry model.Entry) error {
 		entry.ShortURL,
 		entry.OriginalURL,
 	)
-	if err != nil {
-		return err
+	if err == nil {
+		return nil
 	}
 
-	return nil
+	if pgErr, ok := errors.AsType[*pgconn.PgError](
+		err,
+	); ok &&
+		pgErr.Code == pgerrcode.UniqueViolation {
+		return ErrNonUnique
+	}
+
+	return err
 }
 
 func (db *DBStorage) SaveEntries(ctx context.Context, entries []model.Entry) error {
@@ -107,4 +121,19 @@ func (db *DBStorage) SaveEntries(ctx context.Context, entries []model.Entry) err
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (db *DBStorage) GetShortByLongURL(ctx context.Context, longURL string) (string, error) {
+	if longURL == "" {
+		return "", ErrEmptyString
+	}
+
+	var shortURL string
+
+	row := db.pool.QueryRow(ctx, "SELECT short_url FROM urls where original_url = $1", longURL)
+	if err := row.Scan(&shortURL); err != nil {
+		return "", err
+	}
+
+	return shortURL, nil
 }

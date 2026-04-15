@@ -70,6 +70,10 @@ func (f *FileStorage) SaveEntries(ctx context.Context, entries []model.Entry) er
 	return nil
 }
 
+func (f *FileStorage) GetShortByLongURL(ctx context.Context, longURL string) (string, error) {
+	return "", nil
+}
+
 type Producer struct {
 	file   *os.File
 	writer *bufio.Writer

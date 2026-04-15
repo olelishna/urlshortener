@@ -42,6 +42,13 @@ func (s *PersistentStorageMock) SaveEntries(ctx context.Context, entries []model
 	return nil
 }
 
+func (s *PersistentStorageMock) GetShortByLongURL(
+	ctx context.Context,
+	longURL string,
+) (string, error) {
+	return "", nil
+}
+
 func TestShortenURL(t *testing.T) {
 	store := storage.NewStore(context.Background(), new(PersistentStorageMock))
 	h := &handler.Handler{

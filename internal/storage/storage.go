@@ -13,6 +13,7 @@ type StoreInterface interface {
 	Save(ctx context.Context, shortURL string, longURL string) error
 	SaveBatch(ctx context.Context, items []SaveBatchItem) error
 	Get(ctx context.Context, shortURL string) (string, bool, error)
+	GetShortByLongURL(ctx context.Context, longURL string) (string, error)
 }
 
 type SaveBatchItem struct {
@@ -39,13 +40,12 @@ func NewStore(ctx context.Context, persistentStorage repository.PersistentStorag
 }
 
 func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	chSave := make(chan error)
 
 	go func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		s.urls[shortURL] = longURL
-
 		uuidEntry, err := uuid.NewUUID()
 		if err != nil {
 			chSave <- err
@@ -57,9 +57,11 @@ func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error
 			OriginalURL: longURL,
 		}
 
-		if err := s.persistentStorage.SaveEntry(ctx, entry); err != nil {
-			chSave <- err
+		if errSave := s.persistentStorage.SaveEntry(ctx, entry); errSave != nil {
+			chSave <- errSave
 		}
+
+		s.urls[shortURL] = longURL
 
 		chSave <- nil
 	}()
@@ -73,17 +75,15 @@ func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error
 }
 
 func (s *Store) SaveBatch(ctx context.Context, items []SaveBatchItem) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	chSave := make(chan error)
 
 	go func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-
 		var entries []model.Entry
 
 		for _, item := range items {
-			s.urls[item.ShortURL] = item.LongURL
-
 			uuidEntry, err := uuid.NewUUID()
 			if err != nil {
 				chSave <- err
@@ -100,6 +100,10 @@ func (s *Store) SaveBatch(ctx context.Context, items []SaveBatchItem) error {
 
 		if err := s.persistentStorage.SaveEntries(ctx, entries); err != nil {
 			chSave <- err
+		}
+
+		for _, item := range items {
+			s.urls[item.ShortURL] = item.LongURL
 		}
 
 		chSave <- nil
@@ -138,4 +142,13 @@ func (s *Store) Get(ctx context.Context, shortURL string) (string, bool, error) 
 	case <-ctx.Done():
 		return "", false, ctx.Err()
 	}
+}
+
+func (s *Store) GetShortByLongURL(ctx context.Context, longURL string) (string, error) {
+	short, err := s.persistentStorage.GetShortByLongURL(ctx, longURL)
+	if err != nil {
+		return "", err
+	}
+
+	return short, nil
 }

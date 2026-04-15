@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
+	"github.com/olelishna/urlshortener/internal/repository"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"go.uber.org/zap"
 )
@@ -39,9 +41,22 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 
 	shortURL := model.GenerateShortURL()
 
-	err = h.Store.Save(req.Context(), shortURL, longURL)
-	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
+	errSave := h.Store.Save(req.Context(), shortURL, longURL)
+	if errSave != nil {
+		if errors.Is(errSave, repository.ErrNonUnique) {
+			oldShortURL, errGetByLong := h.Store.GetShortByLongURL(req.Context(), longURL)
+			if errGetByLong == nil {
+				res.Header().Set("content-type", "text/plain")
+				res.WriteHeader(http.StatusConflict)
+				res.Write([]byte(config.FlagBaseURLResult + "/" + oldShortURL))
+
+				return
+			}
+
+			errSave = errors.Join(errSave, errGetByLong)
+		}
+
+		http.Error(res, errSave.Error(), http.StatusInternalServerError)
 
 		return
 	}
@@ -85,9 +100,33 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 
 	shortURL := model.GenerateShortURL()
 
-	err := h.Store.Save(req.Context(), shortURL, shreq.URL)
-	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
+	errSave := h.Store.Save(req.Context(), shortURL, shreq.URL)
+	if errSave != nil {
+		if errors.Is(errSave, repository.ErrNonUnique) {
+			oldShortURL, errGetByLong := h.Store.GetShortByLongURL(req.Context(), shreq.URL)
+			if errGetByLong == nil {
+
+				found := model.ShortenResponse{
+					Result: config.FlagBaseURLResult + "/" + oldShortURL,
+				}
+
+				res.Header().Set("Content-Type", "application/json")
+				res.WriteHeader(http.StatusConflict)
+
+				enc := json.NewEncoder(res)
+				if err := enc.Encode(found); err != nil {
+					logger.Log.Debug("error encoding response", zap.Error(err))
+
+					return
+				}
+
+				return
+			}
+
+			errSave = errors.Join(errSave, errGetByLong)
+		}
+
+		http.Error(res, errSave.Error(), http.StatusInternalServerError)
 
 		return
 	}

@@ -54,13 +54,9 @@ func run(ctx context.Context) error {
 	logger.Log.Info("memory storage initialized by default")
 
 	if config.FlagDatabaseDSN != "" {
-		m, err := migrate.New("file://migrations", config.FlagDatabaseDSN)
-		if err != nil {
-			return err
-		}
-
-		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-			return err
+		errMigrate := applyMigrations()
+		if errMigrate != nil {
+			return errMigrate
 		}
 
 		pool, err := pgxpool.New(ctx, config.FlagDatabaseDSN)
@@ -146,6 +142,27 @@ func run(ctx context.Context) error {
 	if err := g.Wait(); err != nil {
 		return err
 	}
+
+	return nil
+}
+
+func applyMigrations() error {
+	logger.Log.Info("start migrations")
+
+	m, err := migrate.New("file://migrations", config.FlagDatabaseDSN)
+	if err != nil {
+		return err
+	}
+
+	if errUp := m.Up(); errUp != nil {
+		if !errors.Is(errUp, migrate.ErrNoChange) {
+			return errUp
+		}
+
+		logger.Log.Info("database is already up-to-date")
+	}
+
+	logger.Log.Info("end migrations")
 
 	return nil
 }
