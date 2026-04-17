@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	_clientTimeOut       = 30 * time.Second
-	_idleConnTimeout     = 90 * time.Second
-	_maxIdleConns        = 100
-	_maxIdleConnsPerHost = 10
+	ClientTimeOut       = 30 * time.Second
+	IdleConnTimeout     = 90 * time.Second
+	MaxIdleConns        = 100
+	MaxIdleConnsPerHost = 10
 )
 
 func main() {
@@ -32,11 +32,11 @@ func main() {
 	long = strings.TrimSuffix(long, "\n")
 
 	client := &http.Client{
-		Timeout: _clientTimeOut,
+		Timeout: ClientTimeOut,
 		Transport: &http.Transport{
-			MaxIdleConns:        _maxIdleConns,
-			MaxIdleConnsPerHost: _maxIdleConnsPerHost,
-			IdleConnTimeout:     _idleConnTimeout,
+			MaxIdleConns:        MaxIdleConns,
+			MaxIdleConnsPerHost: MaxIdleConnsPerHost,
+			IdleConnTimeout:     IdleConnTimeout,
 		},
 	}
 

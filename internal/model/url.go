@@ -13,14 +13,14 @@ type Entry struct {
 	OriginalURL string    `json:"original_url"`
 }
 
-func GenerateShortURL() string {
+func GenerateShortURL() (string, error) {
 	const defLen = 8
 	randomBytes := make([]byte, defLen)
 
 	_, err := rand.Read(randomBytes)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 
-	return base64.URLEncoding.EncodeToString(randomBytes)[:defLen]
+	return base64.URLEncoding.EncodeToString(randomBytes)[:defLen], nil
 }

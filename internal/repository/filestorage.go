@@ -14,21 +14,21 @@ type FileStorage struct {
 	consumer *Consumer
 }
 
-func NewFileStorage(filepath string) *FileStorage {
+func NewFileStorage(filepath string) (*FileStorage, error) {
 	producer, err := NewProducer(filepath)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	consumer, err := NewConsumer(filepath)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	return &FileStorage{
 		producer: producer,
 		consumer: consumer,
-	}
+	}, nil
 }
 
 func (f *FileStorage) LoadData(ctx context.Context) (map[string]string, error) {

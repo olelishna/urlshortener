@@ -17,8 +17,9 @@ func TestGenerateShortURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := model.GenerateShortURL()
+			got, err := model.GenerateShortURL()
 
+			assert.NoError(t, err)
 			assert.IsType(t, "string", got)
 			assert.Equal(t, len(got), 8)
 		})
