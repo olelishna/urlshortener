@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 
 	"github.com/olelishna/urlshortener/internal/model"
@@ -71,7 +72,11 @@ func (f *FileStorage) SaveEntries(ctx context.Context, entries []model.Entry) er
 }
 
 func (f *FileStorage) GetShortByLongURL(ctx context.Context, longURL string) (string, error) {
-	return "", nil
+	return "", errors.New("not implemented")
+}
+
+func (f *FileStorage) GetURLsByUser(ctx context.Context, userID string) ([]UserLinksListItem, error) {
+	return nil, errors.New("not implemented")
 }
 
 type Producer struct {

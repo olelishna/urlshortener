@@ -27,6 +27,7 @@ type DBStorage struct {
 var (
 	ErrNonUnique   = errors.New("data conflict")
 	ErrEmptyString = errors.New("no empty string allowed")
+	ErrNoUser      = errors.New("user uuid shouldn't be empty")
 )
 
 func NewDBStorage(ctx context.Context, pool *pgxpool.Pool) (*DBStorage, error) {
@@ -108,10 +109,11 @@ func (db *DBStorage) LoadData(ctx context.Context) (map[string]string, error) {
 func (db *DBStorage) SaveEntry(ctx context.Context, entry model.Entry) error {
 	_, err := db.pool.Exec(
 		ctx,
-		"INSERT INTO urls (uuid, short_url, original_url) VALUES ($1,$2,$3)",
+		"INSERT INTO urls (uuid, short_url, original_url, user_uuid) VALUES ($1,$2,$3,$4)",
 		entry.UUID,
 		entry.ShortURL,
 		entry.OriginalURL,
+		entry.UserUUID,
 	)
 	if err == nil {
 		return nil
@@ -141,9 +143,9 @@ func (db *DBStorage) SaveEntries(ctx context.Context, entries []model.Entry) err
 	_, err = tx.CopyFrom(
 		ctx,
 		pgx.Identifier{"urls"},
-		[]string{"uuid", "short_url", "original_url"},
+		[]string{"uuid", "short_url", "original_url", "user_uuid"},
 		pgx.CopyFromSlice(len(entries), func(i int) ([]any, error) {
-			return []any{entries[i].UUID, entries[i].ShortURL, entries[i].OriginalURL}, nil
+			return []any{entries[i].UUID, entries[i].ShortURL, entries[i].OriginalURL, entries[i].UserUUID}, nil
 		}),
 	)
 	if err != nil {
@@ -166,4 +168,36 @@ func (db *DBStorage) GetShortByLongURL(ctx context.Context, longURL string) (str
 	}
 
 	return shortURL, nil
+}
+
+func (db *DBStorage) GetURLsByUser(ctx context.Context, userID string) ([]UserLinksListItem, error) {
+	if userID == "" {
+		return nil, ErrNoUser
+	}
+
+	var urls []UserLinksListItem
+
+	ctxT, cancel := context.WithTimeout(ctx, QueryTimeOut)
+	defer cancel()
+
+	rows, err := db.pool.Query(ctxT, "SELECT short_url, original_url FROM urls where user_uuid = $1", userID)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var item UserLinksListItem
+
+		err = rows.Scan(&item.RawShortURL, &item.OriginalURL)
+		if err != nil {
+			return nil, err
+		}
+
+		urls = append(urls, item)
+	}
+
+	return urls, nil
+
 }

@@ -104,6 +104,74 @@ func (_c *MockPersistentStorage_GetShortByLongURL_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// GetURLsByUser provides a mock function for the type MockPersistentStorage
+func (_mock *MockPersistentStorage) GetURLsByUser(ctx context.Context, userID string) ([]UserLinksListItem, error) {
+	ret := _mock.Called(ctx, userID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetURLsByUser")
+	}
+
+	var r0 []UserLinksListItem
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]UserLinksListItem, error)); ok {
+		return returnFunc(ctx, userID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []UserLinksListItem); ok {
+		r0 = returnFunc(ctx, userID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]UserLinksListItem)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, userID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPersistentStorage_GetURLsByUser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetURLsByUser'
+type MockPersistentStorage_GetURLsByUser_Call struct {
+	*mock.Call
+}
+
+// GetURLsByUser is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+func (_e *MockPersistentStorage_Expecter) GetURLsByUser(ctx interface{}, userID interface{}) *MockPersistentStorage_GetURLsByUser_Call {
+	return &MockPersistentStorage_GetURLsByUser_Call{Call: _e.mock.On("GetURLsByUser", ctx, userID)}
+}
+
+func (_c *MockPersistentStorage_GetURLsByUser_Call) Run(run func(ctx context.Context, userID string)) *MockPersistentStorage_GetURLsByUser_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPersistentStorage_GetURLsByUser_Call) Return(userLinksListItems []UserLinksListItem, err error) *MockPersistentStorage_GetURLsByUser_Call {
+	_c.Call.Return(userLinksListItems, err)
+	return _c
+}
+
+func (_c *MockPersistentStorage_GetURLsByUser_Call) RunAndReturn(run func(ctx context.Context, userID string) ([]UserLinksListItem, error)) *MockPersistentStorage_GetURLsByUser_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // LoadData provides a mock function for the type MockPersistentStorage
 func (_mock *MockPersistentStorage) LoadData(ctx context.Context) (map[string]string, error) {
 	ret := _mock.Called(ctx)

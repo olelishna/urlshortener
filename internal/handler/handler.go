@@ -227,6 +227,42 @@ func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
 	}
 }
 
+func (h *Handler) GetUserURLs(res http.ResponseWriter, req *http.Request) {
+	urls, err := h.Store.GetURLsByUser(req.Context())
+	if err != nil {
+		logger.Log.Error(err.Error(), zap.String("event", "get URLs by user"))
+
+		if errors.Is(err, storage.ErrNoCurrentUser) {
+			code := http.StatusUnauthorized
+			http.Error(res, http.StatusText(code), code)
+
+			return
+		}
+
+		code := http.StatusInternalServerError
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
+	if len(urls) == 0 {
+		code := http.StatusNoContent
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusOK)
+
+	enc := json.NewEncoder(res)
+	if err := enc.Encode(urls); err != nil {
+		logger.Log.Debug("error encoding response", zap.Error(err))
+
+		return
+	}
+}
+
 type DbHandler struct {
 	Pool *pgxpool.Pool
 }

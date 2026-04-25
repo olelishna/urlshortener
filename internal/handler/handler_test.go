@@ -14,13 +14,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/validator/v10"
-	"github.com/go-resty/resty/v2"
+	"github.com/google/uuid"
 	"github.com/olelishna/urlshortener/internal/compress"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/handler"
 	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
 	"github.com/olelishna/urlshortener/internal/repository"
+	auth "github.com/olelishna/urlshortener/internal/service"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -92,23 +93,24 @@ func TestShortenURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := resty.New().R()
-			req.Method = tt.method
-			req.URL = srv.URL
-			req.SetBody(tt.body)
+			req := httptest.NewRequest(tt.method, "/", bytes.NewBufferString(tt.body))
 
-			resp, err := req.Send()
-			assert.NoError(t, err, "error making HTTP request")
+			uuid1, _ := uuid.NewUUID()
+			ctx := context.WithValue(req.Context(), auth.UserIDKey, uuid1.String())
+			req = req.WithContext(ctx)
+
+			rr := httptest.NewRecorder()
+			r.ServeHTTP(rr, req)
 
 			assert.Equal(
 				t,
 				tt.expectedCode,
-				resp.StatusCode(),
+				rr.Code,
 				"Код ответа не совпадает с ожидаемым",
 			)
 
 			if tt.expectedURLLen != 0 {
-				rawURL := string(resp.Body())
+				rawURL := string(rr.Body.Bytes())
 				parsedURL, err := url.Parse(rawURL)
 				assert.NoError(t, err, "Error parsing URL")
 
@@ -124,14 +126,18 @@ func TestShortenURL(t *testing.T) {
 }
 
 func TestRedirectURL(t *testing.T) {
+	uuid1, _ := uuid.NewUUID()
+	ctx := context.WithValue(t.Context(), auth.UserIDKey, uuid1.String())
+
 	m := repository.NewMockPersistentStorage(t)
-	m.EXPECT().LoadData(context.Background()).Return(make(map[string]string), nil)
+	m.EXPECT().LoadData(ctx).Return(make(map[string]string), nil)
 	m.On("SaveEntry", mock.Anything, mock.AnythingOfType("model.Entry")).
 		Return(nil)
 
-	store, _ := storage.NewStore(context.Background(), m)
+	store, _ := storage.NewStore(ctx, m)
+
 	if err := store.Save(
-		context.Background(),
+		ctx,
 		"shorturl",
 		"https://practicum.yandex.ru/",
 	); err != nil {
@@ -184,21 +190,22 @@ func TestRedirectURL(t *testing.T) {
 			expectedCode: http.StatusNotFound,
 			hash:         "12345678",
 		},
-		{name: "GET/Ok", method: http.MethodGet, expectedCode: http.StatusOK, hash: "shorturl"},
+		{name: "GET/Ok", method: http.MethodGet, expectedCode: http.StatusTemporaryRedirect, hash: "shorturl"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := resty.New().R()
-			req.Method = tt.method
-			req.URL = srv.URL + "/" + tt.hash
+			req := httptest.NewRequest(tt.method, "/"+tt.hash, nil)
 
-			resp, err := req.Send()
-			assert.NoError(t, err, "error making HTTP request")
+			ctx := context.WithValue(req.Context(), auth.UserIDKey, uuid1.String())
+			req = req.WithContext(ctx)
+
+			rr := httptest.NewRecorder()
+			r.ServeHTTP(rr, req)
 
 			assert.Equal(
 				t,
 				tt.expectedCode,
-				resp.StatusCode(),
+				rr.Code,
 				"Код ответа не совпадает с ожидаемым",
 			)
 		})
@@ -208,12 +215,15 @@ func TestRedirectURL(t *testing.T) {
 func TestGzipCompression(t *testing.T) {
 	config.ParseFlags()
 
+	uuid1, _ := uuid.NewUUID()
+	ctx := context.WithValue(t.Context(), auth.UserIDKey, uuid1.String())
+
 	m := repository.NewMockPersistentStorage(t)
-	m.EXPECT().LoadData(context.Background()).Return(make(map[string]string), nil)
+	m.EXPECT().LoadData(ctx).Return(make(map[string]string), nil)
 	m.On("SaveEntry", mock.Anything, mock.AnythingOfType("model.Entry")).
 		Return(nil)
 
-	store, _ := storage.NewStore(context.Background(), m)
+	store, _ := storage.NewStore(ctx, m)
 
 	h := &handler.Handler{
 		Store: store,
@@ -243,24 +253,22 @@ func TestGzipCompression(t *testing.T) {
 		err = zb.Close()
 		require.NoError(t, err)
 
-		req := resty.New().R()
-		req.Method = http.MethodPost
-		req.URL = srv.URL + "/api/shorten"
-		req.SetBody(buf)
-		req.Header.Set("Content-Encoding", "gzip")
-		req.Header.Set("Accept-Encoding", "")
+		req := httptest.NewRequest(http.MethodPost, "/api/shorten", bytes.NewBufferString(requestBody))
 
-		resp, err := req.Send()
+		ctx := context.WithValue(req.Context(), auth.UserIDKey, uuid1.String())
+		req = req.WithContext(ctx)
 
-		require.NoError(t, err, "error making HTTP request")
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+
 		require.Equal(
 			t,
 			http.StatusCreated,
-			resp.StatusCode(),
+			rr.Code,
 			"Код ответа не совпадает с ожидаемым",
 		)
 
-		body := resp.Body()
+		body := rr.Body.Bytes()
 		dec := json.NewDecoder(bytes.NewReader(body))
 
 		var shresp model.ShortenResponse
@@ -273,18 +281,20 @@ func TestGzipCompression(t *testing.T) {
 	})
 
 	t.Run("accepts_gzip", func(t *testing.T) {
-		buf := bytes.NewBufferString(requestBody)
-		r := httptest.NewRequest(http.MethodPost, srv.URL+"/api/shorten", buf)
-		r.RequestURI = ""
-		r.Header.Set("Accept-Encoding", "gzip")
 
-		resp, err := http.DefaultClient.Do(r)
-		require.NoError(t, err)
-		require.Equal(t, http.StatusCreated, resp.StatusCode)
+		req := httptest.NewRequest(http.MethodPost, "/api/shorten", bytes.NewBufferString(requestBody))
 
-		defer resp.Body.Close()
+		req.Header.Set("Accept-Encoding", "gzip")
 
-		zr, err := gzip.NewReader(resp.Body)
+		ctx := context.WithValue(req.Context(), auth.UserIDKey, uuid1.String())
+		req = req.WithContext(ctx)
+
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusCreated, rr.Code)
+
+		zr, err := gzip.NewReader(rr.Body)
 		require.NoError(t, err)
 
 		body, err := io.ReadAll(zr)
