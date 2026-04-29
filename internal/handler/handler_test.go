@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/olelishna/urlshortener/internal/compress"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/handler"
@@ -131,8 +132,9 @@ func TestRedirectURL(t *testing.T) {
 
 	m := repository.NewMockPersistentStorage(t)
 	m.EXPECT().LoadData(ctx).Return(make(map[string]string), nil)
-	m.On("SaveEntry", mock.Anything, mock.AnythingOfType("model.Entry")).
-		Return(nil)
+	m.On("SaveEntry", mock.Anything, mock.AnythingOfType("model.Entry")).Return(nil)
+	m.On("GetLongURL", mock.Anything, "12345678").Return("", pgx.ErrNoRows).Maybe()
+	m.On("GetLongURL", mock.Anything, "shorturl").Return("https://practicum.yandex.ru/", nil).Maybe()
 
 	store, _ := storage.NewStore(ctx, m)
 

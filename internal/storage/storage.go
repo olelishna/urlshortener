@@ -19,6 +19,7 @@ type StoreInterface interface {
 	Get(ctx context.Context, shortURL string) (string, bool, error)
 	GetShortByLongURL(ctx context.Context, longURL string) (string, error)
 	GetURLsByUser(ctx context.Context) ([]UserLinksListItem, error)
+	DeleteItems(ctx context.Context, batch []DeleteBatchItem) error
 }
 
 type SaveBatchItem struct {
@@ -29,6 +30,11 @@ type SaveBatchItem struct {
 type UserLinksListItem struct {
 	ShortURL    string `json:"short_url"`
 	OriginalURL string `json:"original_url"`
+}
+
+type DeleteBatchItem struct {
+	UserID    string
+	ShortURLs []string
 }
 
 type Store struct {
@@ -174,7 +180,17 @@ func (s *Store) Get(ctx context.Context, shortURL string) (string, bool, error) 
 		return "", false, errors.New("shorturl " + shortURL + " not found")
 	}
 
-	return longURL, exists, nil
+	if s.ps != nil {
+		long, err := s.ps.GetLongURL(ctx, shortURL)
+		if err != nil {
+			return "", false, err
+		}
+		if long != "" {
+			longURL = long
+		}
+	}
+
+	return longURL, true, nil
 }
 
 func (s *Store) GetShortByLongURL(ctx context.Context, longURL string) (string, error) {
@@ -216,4 +232,38 @@ func (s *Store) GetURLsByUser(ctx context.Context) ([]UserLinksListItem, error) 
 	}
 
 	return result, nil
+}
+
+func (s *Store) DeleteItems(ctx context.Context, batch []DeleteBatchItem) error {
+	if s.ps == nil {
+		return ErrNoPs
+	}
+
+	type key struct {
+		userID string
+		short  string
+	}
+
+	unique := make(map[key]struct{})
+	for _, t := range batch {
+		for _, short := range t.ShortURLs {
+			unique[key{t.UserID, short}] = struct{}{}
+		}
+	}
+
+	if len(unique) == 0 {
+		return nil
+	}
+
+	byUser := make(map[string][]string)
+	for k := range unique {
+		byUser[k.userID] = append(byUser[k.userID], k.short)
+	}
+
+	err := s.ps.DeleteURLs(ctx, byUser)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

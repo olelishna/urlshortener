@@ -17,4 +17,6 @@ type PersistentStorage interface {
 	SaveEntries(ctx context.Context, entries []model.Entry) error
 	GetShortByLongURL(ctx context.Context, longURL string) (string, error)
 	GetURLsByUser(ctx context.Context, userID string) ([]UserLinksListItem, error)
+	DeleteURLs(ctx context.Context, urlsByUser map[string][]string) error
+	GetLongURL(ctx context.Context, shortURL string) (string, error)
 }

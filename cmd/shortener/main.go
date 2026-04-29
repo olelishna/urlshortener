@@ -107,6 +107,7 @@ func run(ctx context.Context) error {
 	r.Post("/api/shorten", hand.ShortenURLJson)
 	r.Post("/api/shorten/batch", hand.ShortenURLBatch)
 	r.Get("/api/user/urls", hand.GetUserURLs)
+	r.Delete("/api/user/urls", hand.DeleteUserURLs)
 	r.Get("/ping", dbHand.PingDB)
 
 	nCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, os.Kill)

@@ -79,6 +79,14 @@ func (f *FileStorage) GetURLsByUser(ctx context.Context, userID string) ([]UserL
 	return nil, errors.New("not implemented")
 }
 
+func (f *FileStorage) DeleteURLs(ctx context.Context, urlsByUser map[string][]string) error {
+	return errors.New("not implemented")
+}
+
+func (f *FileStorage) GetLongURL(ctx context.Context, shortURL string) (string, error) {
+	return "", nil
+}
+
 type Producer struct {
 	file   *os.File
 	writer *bufio.Writer
