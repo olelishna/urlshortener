@@ -101,6 +101,7 @@ func run(ctx context.Context) error {
 	r.Post("/", hand.ShortenURL)
 	r.Get("/{id}", hand.RedirectURL)
 	r.Post("/api/shorten", hand.ShortenURLJson)
+	r.Post("/api/shorten/batch", hand.ShortenURLBatch)
 	r.Get("/ping", hand.PingDB)
 
 	ctxC, cancel := context.WithCancel(ctx)

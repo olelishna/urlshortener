@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olelishna/urlshortener/internal/model"
 )
@@ -80,4 +81,30 @@ func (db *DBStorage) SaveEntry(ctx context.Context, entry model.Entry) error {
 	}
 
 	return nil
+}
+
+func (db *DBStorage) SaveEntries(ctx context.Context, entries []model.Entry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.CopyFrom(
+		ctx,
+		pgx.Identifier{"urls"},
+		[]string{"uuid", "short_url", "original_url"},
+		pgx.CopyFromSlice(len(entries), func(i int) ([]any, error) {
+			return []any{entries[i].UUID, entries[i].ShortURL, entries[i].OriginalURL}, nil
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

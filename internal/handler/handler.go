@@ -123,3 +123,50 @@ func (h *Handler) PingDB(res http.ResponseWriter, req *http.Request) {
 	res.WriteHeader(http.StatusOK)
 	res.Write([]byte("Pong"))
 }
+
+func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
+	var shbreq model.ShortenBatchRequest
+
+	dec := json.NewDecoder(req.Body)
+	if err := dec.Decode(&shbreq); err != nil {
+		http.Error(res, "cannot decode request JSON body", http.StatusInternalServerError)
+
+		return
+	}
+
+	var (
+		shbresp    model.ShortenBatchResponse
+		batchItems []storage.SaveBatchItem
+	)
+
+	for _, item := range shbreq {
+		shortURL := model.GenerateShortURL()
+		batchItem := storage.SaveBatchItem{
+			ShortURL: shortURL,
+			LongURL:  item.OriginalURL,
+		}
+		resItem := model.ShortenBatchResponseItem{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      config.FlagBaseURLResult + "/" + shortURL,
+		}
+		shbresp = append(shbresp, resItem)
+		batchItems = append(batchItems, batchItem)
+	}
+
+	err := h.Store.SaveBatch(req.Context(), batchItems)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusCreated)
+
+	enc := json.NewEncoder(res)
+	if err := enc.Encode(shbresp); err != nil {
+		logger.Log.Debug("error encoding response", zap.Error(err))
+
+		return
+	}
+}
