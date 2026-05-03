@@ -20,9 +20,14 @@ type Store struct {
 	mu                sync.RWMutex
 }
 
-func NewStore(persistentStorage repository.PersistentStorage) StoreInterface {
+func NewStore(ctx context.Context, persistentStorage repository.PersistentStorage) StoreInterface {
+	urls, err := persistentStorage.LoadData(ctx)
+	if err != nil {
+		panic(err)
+	}
+
 	return &Store{
-		urls:              persistentStorage.LoadData(),
+		urls:              urls,
 		persistentStorage: persistentStorage,
 	}
 }
@@ -46,7 +51,7 @@ func (s *Store) Save(ctx context.Context, shortURL, longURL string) error {
 			OriginalURL: longURL,
 		}
 
-		if err := s.persistentStorage.SaveEntry(entry); err != nil {
+		if err := s.persistentStorage.SaveEntry(ctx, entry); err != nil {
 			chSave <- err
 		}
 

@@ -11,6 +11,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olelishna/urlshortener/internal/compress"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/handler"
@@ -24,24 +28,66 @@ import (
 const _shutdownTimeout = 15 * time.Second
 
 func main() {
+	ctx := context.Background()
+
 	config.ParseFlags()
 
 	if err := logger.Init(config.FlagLogLevel); err != nil {
 		panic(err)
 	}
 
-	if err := run(); err != nil {
+	if err := run(ctx); err != nil {
 		if !errors.Is(err, http.ErrServerClosed) {
 			logger.Log.Panic(err.Error(), zap.String("event", "run server"))
 		}
 	}
 }
 
-func run() error {
-	logger.Log.Info("Running server", zap.String("addr", config.FlagRunAddr))
+func run(ctx context.Context) error {
+	logger.Log.Info("Running server at", zap.String("addr", config.FlagRunAddr))
 
-	fileStorage := repository.NewFileStorage()
-	store := storage.NewStore(fileStorage)
+	var (
+		persistentStorage repository.PersistentStorage = repository.NewBaseStorage()
+		storageInitErr    error
+	)
+
+	logger.Log.Info("memory storage initialized by default")
+
+	if config.FlagDatabaseDSN != "" {
+		m, err := migrate.New("file://migrations", config.FlagDatabaseDSN)
+		if err != nil {
+			return err
+		}
+
+		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+			return err
+		}
+
+		pool, err := pgxpool.New(ctx, config.FlagDatabaseDSN)
+		if err != nil {
+			panic(err)
+		}
+		defer pool.Close()
+
+		persistentStorage, storageInitErr = repository.NewDBStorage(ctx, pool)
+		if storageInitErr != nil {
+			logger.Log.Warn(storageInitErr.Error(), zap.String("event", "init database storage"))
+		} else {
+			logger.Log.Info("database storage initialized")
+		}
+	}
+
+	if storageInitErr != nil || config.FlagDatabaseDSN == "" {
+		if config.FlagFileStoragePath != "" {
+			logger.Log.Info("file storage initialized")
+
+			persistentStorage = repository.NewFileStorage(config.FlagFileStoragePath)
+		} else {
+			persistentStorage = repository.NewBaseStorage()
+		}
+	}
+
+	store := storage.NewStore(ctx, persistentStorage)
 	hand := handler.NewHandler(store)
 
 	r := chi.NewRouter()
@@ -57,12 +103,12 @@ func run() error {
 	r.Post("/api/shorten", hand.ShortenURLJson)
 	r.Get("/ping", hand.PingDB)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctxC, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	go func() {
 		exit := make(chan os.Signal, 1)
-		signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM)
+		signal.Notify(exit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 
 		<-exit
 		cancel()
@@ -73,7 +119,7 @@ func run() error {
 		Handler: r,
 	}
 
-	g, gCtx := errgroup.WithContext(ctx)
+	g, gCtx := errgroup.WithContext(ctxC)
 	g.Go(func() error {
 		return httpServer.ListenAndServe()
 	})
