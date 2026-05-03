@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"sync"
 
 	"github.com/google/uuid"
@@ -9,50 +10,80 @@ import (
 )
 
 type StoreInterface interface {
-	Save(shortURL, longURL string) error
-	Get(shortURL string) (string, bool)
+	Save(ctx context.Context, shortURL, longURL string) error
+	Get(ctx context.Context, shortURL string) (string, bool, error)
 }
 
 type Store struct {
-	urls    map[string]string
-	storage repository.StorageInterface
-	mu      sync.RWMutex
+	urls              map[string]string
+	persistentStorage repository.PersistentStorage
+	mu                sync.RWMutex
 }
 
-func NewStore(storage repository.StorageInterface) StoreInterface {
+func NewStore(persistentStorage repository.PersistentStorage) StoreInterface {
 	return &Store{
-		urls:    storage.LoadData(),
-		storage: storage,
+		urls:              persistentStorage.LoadData(),
+		persistentStorage: persistentStorage,
 	}
 }
 
-func (s *Store) Save(shortURL, longURL string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.urls[shortURL] = longURL
+func (s *Store) Save(ctx context.Context, shortURL, longURL string) error {
+	chSave := make(chan error)
 
-	uuidEntry, err := uuid.NewUUID()
-	if err != nil {
+	go func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.urls[shortURL] = longURL
+
+		uuidEntry, err := uuid.NewUUID()
+		if err != nil {
+			chSave <- err
+		}
+
+		entry := model.Entry{
+			UUID:        uuidEntry,
+			ShortURL:    shortURL,
+			OriginalURL: longURL,
+		}
+
+		if err := s.persistentStorage.SaveEntry(entry); err != nil {
+			chSave <- err
+		}
+
+		chSave <- nil
+	}()
+
+	select {
+	case err := <-chSave:
 		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-
-	entry := model.Entry{
-		UUID:        uuidEntry,
-		ShortURL:    shortURL,
-		OriginalURL: longURL,
-	}
-
-	if err := s.storage.SaveEntry(entry); err != nil {
-		return err
-	}
-
-	return nil
 }
 
-func (s *Store) Get(shortURL string) (string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	longURL, exists := s.urls[shortURL]
+type GetAnswer struct {
+	LongURL string
+	Exist   bool
+}
 
-	return longURL, exists
+func (s *Store) Get(ctx context.Context, shortURL string) (string, bool, error) {
+	chGet := make(chan GetAnswer)
+
+	go func() {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		longURL, exists := s.urls[shortURL]
+
+		chGet <- GetAnswer{
+			LongURL: longURL,
+			Exist:   exists,
+		}
+	}()
+
+	select {
+	case answer := <-chGet:
+		return answer.LongURL, answer.Exist, nil
+	case <-ctx.Done():
+		return "", false, ctx.Err()
+	}
 }

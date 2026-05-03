@@ -3,6 +3,7 @@ package handler_test
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -25,20 +26,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type StorageMock struct {
+type PersistentStorageMock struct {
 	mock.Mock
 }
 
-func (s *StorageMock) LoadData() map[string]string {
+func (s *PersistentStorageMock) LoadData() map[string]string {
 	return make(map[string]string)
 }
 
-func (s *StorageMock) SaveEntry(model.Entry) error {
+func (s *PersistentStorageMock) SaveEntry(model.Entry) error {
 	return nil
 }
 
 func TestShortenURL(t *testing.T) {
-	store := storage.NewStore(new(StorageMock))
+	store := storage.NewStore(new(PersistentStorageMock))
 	h := &handler.Handler{
 		Store: store,
 	}
@@ -129,8 +130,12 @@ func TestShortenURL(t *testing.T) {
 }
 
 func TestRedirectURL(t *testing.T) {
-	store := storage.NewStore(new(StorageMock))
-	if err := store.Save("shorturl", "https://www.google.com/"); err != nil {
+	store := storage.NewStore(new(PersistentStorageMock))
+	if err := store.Save(
+		context.Background(),
+		"shorturl",
+		"https://practicum.yandex.ru/",
+	); err != nil {
 		return
 	}
 
@@ -204,7 +209,7 @@ func TestRedirectURL(t *testing.T) {
 func TestGzipCompression(t *testing.T) {
 	config.ParseFlags()
 
-	store := storage.NewStore(new(StorageMock))
+	store := storage.NewStore(new(PersistentStorageMock))
 
 	h := &handler.Handler{
 		Store: store,
