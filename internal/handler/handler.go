@@ -2,14 +2,17 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
+	"github.com/olelishna/urlshortener/internal/repository"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"go.uber.org/zap"
 )
@@ -37,31 +40,56 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortURL := model.GenerateShortURL()
-
-	err = h.Store.Save(req.Context(), shortURL, longURL)
+	shortURL, err := model.GenerateShortURL()
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
+		logger.Log.Error(err.Error(), zap.String("event", "generate short URL"))
+
+		code := http.StatusInternalServerError
+		http.Error(res, http.StatusText(code), code)
 
 		return
 	}
 
+	errS := h.Store.Save(req.Context(), shortURL, longURL)
+	if errS != nil {
+		if errors.Is(errS, repository.ErrNonUnique) {
+			oldShortURL, errG := h.Store.GetShortByLongURL(req.Context(), longURL)
+			if errG == nil {
+				uRes, _ := url.JoinPath(config.FlagBaseURLResult, oldShortURL)
+
+				res.Header().Set("content-type", "text/plain")
+				res.WriteHeader(http.StatusConflict)
+				res.Write([]byte(uRes))
+
+				return
+			}
+
+			errS = errors.Join(errS, errG)
+		}
+
+		http.Error(res, errS.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	uRes, _ := url.JoinPath(config.FlagBaseURLResult, shortURL)
+
 	res.Header().Set("content-type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
-	res.Write([]byte(config.FlagBaseURLResult + "/" + shortURL))
+	res.Write([]byte(uRes))
 }
 
 func (h *Handler) RedirectURL(res http.ResponseWriter, req *http.Request) {
 	shortURL := chi.URLParam(req, "id")
 
-	longURL, exists, err := h.Store.Get(req.Context(), shortURL)
+	longURL, _, err := h.Store.Get(req.Context(), shortURL)
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
+		logger.Log.Error(
+			err.Error(),
+			zap.String("event", "redirect url"),
+			zap.String("shortURL", shortURL),
+		)
 
-		return
-	}
-
-	if !exists {
 		http.Error(res, "URL not found", http.StatusNotFound)
 
 		return
@@ -83,17 +111,50 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	shortURL := model.GenerateShortURL()
-
-	err := h.Store.Save(req.Context(), shortURL, shreq.URL)
+	shortURL, err := model.GenerateShortURL()
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
+		logger.Log.Error(err.Error(), zap.String("event", "generate short URL"))
+
+		code := http.StatusInternalServerError
+		http.Error(res, http.StatusText(code), code)
 
 		return
 	}
 
+	errS := h.Store.Save(req.Context(), shortURL, shreq.URL)
+	if errS != nil {
+		if errors.Is(errS, repository.ErrNonUnique) {
+			oldShortURL, errG := h.Store.GetShortByLongURL(req.Context(), shreq.URL)
+			if errG == nil {
+				uRes, _ := url.JoinPath(config.FlagBaseURLResult, oldShortURL)
+				found := model.ShortenResponse{
+					Result: uRes,
+				}
+
+				res.Header().Set("Content-Type", "application/json")
+				res.WriteHeader(http.StatusConflict)
+
+				enc := json.NewEncoder(res)
+				if err := enc.Encode(found); err != nil {
+					logger.Log.Debug("error encoding response", zap.Error(err))
+
+					return
+				}
+
+				return
+			}
+
+			errS = errors.Join(errS, errG)
+		}
+
+		http.Error(res, errS.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	uRes, _ := url.JoinPath(config.FlagBaseURLResult, shortURL)
 	result := model.ShortenResponse{
-		Result: config.FlagBaseURLResult + "/" + shortURL,
+		Result: uRes,
 	}
 
 	res.Header().Set("Content-Type", "application/json")
@@ -107,21 +168,6 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 	}
 
 	logger.Log.Debug("sending HTTP 201 response")
-}
-
-func (h *Handler) PingDB(res http.ResponseWriter, req *http.Request) {
-	conn, err := pgx.Connect(req.Context(), config.FlagDatabaseDSN)
-	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
-
-		return
-	}
-
-	defer conn.Close(req.Context())
-
-	res.Header().Set("content-type", "text/plain")
-	res.WriteHeader(http.StatusOK)
-	res.Write([]byte("Pong"))
 }
 
 func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
@@ -140,14 +186,24 @@ func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
 	)
 
 	for _, item := range shbreq {
-		shortURL := model.GenerateShortURL()
+		shortURL, err := model.GenerateShortURL()
+		if err != nil {
+			logger.Log.Error(err.Error(), zap.String("event", "generate short URL"))
+
+			code := http.StatusInternalServerError
+			http.Error(res, http.StatusText(code), code)
+
+			return
+		}
+
 		batchItem := storage.SaveBatchItem{
 			ShortURL: shortURL,
 			LongURL:  item.OriginalURL,
 		}
+		uRes, _ := url.JoinPath(config.FlagBaseURLResult, shortURL)
 		resItem := model.ShortenBatchResponseItem{
 			CorrelationID: item.CorrelationID,
-			ShortURL:      config.FlagBaseURLResult + "/" + shortURL,
+			ShortURL:      uRes,
 		}
 		shbresp = append(shbresp, resItem)
 		batchItems = append(batchItems, batchItem)
@@ -169,4 +225,35 @@ func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
 
 		return
 	}
+}
+
+type DbHandler struct {
+	Pool *pgxpool.Pool
+}
+
+func NewDbHandler(pool *pgxpool.Pool) *DbHandler {
+	return &DbHandler{Pool: pool}
+}
+
+func (h *DbHandler) PingDB(res http.ResponseWriter, req *http.Request) {
+	if h.Pool == nil {
+		code := http.StatusServiceUnavailable
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
+	err := h.Pool.Ping(req.Context())
+	if err != nil {
+		logger.Log.Error(err.Error(), zap.String("event", "ping db"))
+
+		code := http.StatusInternalServerError
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
+	res.Header().Set("content-type", "text/plain")
+	res.WriteHeader(http.StatusOK)
+	res.Write([]byte("Pong"))
 }

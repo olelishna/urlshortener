@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/google/uuid"
@@ -13,6 +14,7 @@ type StoreInterface interface {
 	Save(ctx context.Context, shortURL string, longURL string) error
 	SaveBatch(ctx context.Context, items []SaveBatchItem) error
 	Get(ctx context.Context, shortURL string) (string, bool, error)
+	GetShortByLongURL(ctx context.Context, longURL string) (string, error)
 }
 
 type SaveBatchItem struct {
@@ -21,31 +23,36 @@ type SaveBatchItem struct {
 }
 
 type Store struct {
-	urls              map[string]string
-	persistentStorage repository.PersistentStorage
-	mu                sync.RWMutex
+	urls map[string]string
+	ps   repository.PersistentStorage
+	mu   sync.RWMutex
 }
 
-func NewStore(ctx context.Context, persistentStorage repository.PersistentStorage) StoreInterface {
-	urls, err := persistentStorage.LoadData(ctx)
-	if err != nil {
-		panic(err)
+func NewStore(ctx context.Context, ps repository.PersistentStorage) (StoreInterface, error) {
+	urls := make(map[string]string)
+
+	if ps != nil {
+		var err error
+
+		urls, err = ps.LoadData(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &Store{
-		urls:              urls,
-		persistentStorage: persistentStorage,
-	}
+		urls: urls,
+		ps:   ps,
+	}, nil
 }
 
 func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	chSave := make(chan error)
 
 	go func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		s.urls[shortURL] = longURL
-
 		uuidEntry, err := uuid.NewUUID()
 		if err != nil {
 			chSave <- err
@@ -57,9 +64,13 @@ func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error
 			OriginalURL: longURL,
 		}
 
-		if err := s.persistentStorage.SaveEntry(ctx, entry); err != nil {
-			chSave <- err
+		if s.ps != nil {
+			if errSave := s.ps.SaveEntry(ctx, entry); errSave != nil {
+				chSave <- errSave
+			}
 		}
+
+		s.urls[shortURL] = longURL
 
 		chSave <- nil
 	}()
@@ -73,17 +84,15 @@ func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error
 }
 
 func (s *Store) SaveBatch(ctx context.Context, items []SaveBatchItem) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	chSave := make(chan error)
 
 	go func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-
 		var entries []model.Entry
 
 		for _, item := range items {
-			s.urls[item.ShortURL] = item.LongURL
-
 			uuidEntry, err := uuid.NewUUID()
 			if err != nil {
 				chSave <- err
@@ -98,8 +107,14 @@ func (s *Store) SaveBatch(ctx context.Context, items []SaveBatchItem) error {
 			entries = append(entries, entry)
 		}
 
-		if err := s.persistentStorage.SaveEntries(ctx, entries); err != nil {
-			chSave <- err
+		if s.ps != nil {
+			if err := s.ps.SaveEntries(ctx, entries); err != nil {
+				chSave <- err
+			}
+		}
+
+		for _, item := range items {
+			s.urls[item.ShortURL] = item.LongURL
 		}
 
 		chSave <- nil
@@ -113,29 +128,28 @@ func (s *Store) SaveBatch(ctx context.Context, items []SaveBatchItem) error {
 	}
 }
 
-type GetAnswer struct {
-	LongURL string
-	Exist   bool
+func (s *Store) Get(ctx context.Context, shortURL string) (string, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	longURL, exists := s.urls[shortURL]
+
+	if !exists {
+		return "", false, errors.New("shorturl " + shortURL + " not found")
+	}
+
+	return longURL, exists, nil
 }
 
-func (s *Store) Get(ctx context.Context, shortURL string) (string, bool, error) {
-	chGet := make(chan GetAnswer)
-
-	go func() {
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-		longURL, exists := s.urls[shortURL]
-
-		chGet <- GetAnswer{
-			LongURL: longURL,
-			Exist:   exists,
+func (s *Store) GetShortByLongURL(ctx context.Context, longURL string) (string, error) {
+	if s.ps != nil {
+		short, err := s.ps.GetShortByLongURL(ctx, longURL)
+		if err != nil {
+			return "", err
 		}
-	}()
 
-	select {
-	case answer := <-chGet:
-		return answer.LongURL, answer.Exist, nil
-	case <-ctx.Done():
-		return "", false, ctx.Err()
+		return short, nil
 	}
+
+	return "", errors.New("ps is nil")
 }

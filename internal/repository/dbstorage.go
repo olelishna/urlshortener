@@ -3,28 +3,44 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/olelishna/urlshortener/internal/config"
+	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
 )
 
 const (
-	_queryTimeOut = 5 * time.Second
+	QueryTimeOut = 5 * time.Second
 )
 
 type DBStorage struct {
 	pool *pgxpool.Pool
 }
 
+var (
+	ErrNonUnique   = errors.New("data conflict")
+	ErrEmptyString = errors.New("no empty string allowed")
+)
+
 func NewDBStorage(ctx context.Context, pool *pgxpool.Pool) (*DBStorage, error) {
-	ctxT, cancel := context.WithTimeout(ctx, _queryTimeOut)
+	ctxT, cancel := context.WithTimeout(ctx, QueryTimeOut)
 	defer cancel()
+
+	err := applyMigrations()
+	if err != nil {
+		return nil, err
+	}
 
 	var exists bool
 
-	err := pool.QueryRow(
+	err = pool.QueryRow(
 		ctxT,
 		"SELECT EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'urls')",
 	).Scan(&exists)
@@ -41,8 +57,29 @@ func NewDBStorage(ctx context.Context, pool *pgxpool.Pool) (*DBStorage, error) {
 	}, nil
 }
 
+func applyMigrations() error {
+	logger.Log.Info("start migrations")
+
+	m, err := migrate.New("file://migrations", config.FlagDatabaseDSN)
+	if err != nil {
+		return err
+	}
+
+	if err = m.Up(); err != nil {
+		if !errors.Is(err, migrate.ErrNoChange) {
+			return err
+		}
+
+		logger.Log.Info("database is already up-to-date")
+	}
+
+	logger.Log.Info("end migrations")
+
+	return nil
+}
+
 func (db *DBStorage) LoadData(ctx context.Context) (map[string]string, error) {
-	ctxT, cancel := context.WithTimeout(ctx, _queryTimeOut)
+	ctxT, cancel := context.WithTimeout(ctx, QueryTimeOut)
 	defer cancel()
 
 	rows, err := db.pool.Query(ctxT, "SELECT short_url, original_url FROM urls")
@@ -76,11 +113,18 @@ func (db *DBStorage) SaveEntry(ctx context.Context, entry model.Entry) error {
 		entry.ShortURL,
 		entry.OriginalURL,
 	)
-	if err != nil {
-		return err
+	if err == nil {
+		return nil
 	}
 
-	return nil
+	if pgErr, ok := errors.AsType[*pgconn.PgError](
+		err,
+	); ok &&
+		pgErr.Code == pgerrcode.UniqueViolation {
+		return fmt.Errorf("%w: original_url %s already exists", ErrNonUnique, entry.OriginalURL)
+	}
+
+	return err
 }
 
 func (db *DBStorage) SaveEntries(ctx context.Context, entries []model.Entry) error {
@@ -107,4 +151,19 @@ func (db *DBStorage) SaveEntries(ctx context.Context, entries []model.Entry) err
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (db *DBStorage) GetShortByLongURL(ctx context.Context, longURL string) (string, error) {
+	if longURL == "" {
+		return "", ErrEmptyString
+	}
+
+	var shortURL string
+
+	row := db.pool.QueryRow(ctx, "SELECT short_url FROM urls where original_url = $1", longURL)
+	if err := row.Scan(&shortURL); err != nil {
+		return "", err
+	}
+
+	return shortURL, nil
 }

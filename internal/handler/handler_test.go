@@ -20,30 +20,20 @@ import (
 	"github.com/olelishna/urlshortener/internal/handler"
 	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
+	"github.com/olelishna/urlshortener/internal/repository"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-type PersistentStorageMock struct {
-	mock.Mock
-}
-
-func (s *PersistentStorageMock) LoadData(ctx context.Context) (map[string]string, error) {
-	return make(map[string]string), nil
-}
-
-func (s *PersistentStorageMock) SaveEntry(ctx context.Context, entry model.Entry) error {
-	return nil
-}
-
-func (s *PersistentStorageMock) SaveEntries(ctx context.Context, entries []model.Entry) error {
-	return nil
-}
-
 func TestShortenURL(t *testing.T) {
-	store := storage.NewStore(context.Background(), new(PersistentStorageMock))
+	m := repository.NewMockPersistentStorage(t)
+	m.EXPECT().LoadData(context.Background()).Return(make(map[string]string), nil)
+	m.On("SaveEntry", mock.Anything, mock.AnythingOfType("model.Entry")).
+		Return(nil)
+
+	store, _ := storage.NewStore(context.Background(), m)
 	h := &handler.Handler{
 		Store: store,
 	}
@@ -96,7 +86,7 @@ func TestShortenURL(t *testing.T) {
 			name:           "POST/Ok",
 			method:         http.MethodPost,
 			expectedCode:   http.StatusCreated,
-			expectedURLLen: 9,
+			expectedURLLen: 8,
 			body:           "https://practicum.yandex.ru/",
 		},
 	}
@@ -134,7 +124,12 @@ func TestShortenURL(t *testing.T) {
 }
 
 func TestRedirectURL(t *testing.T) {
-	store := storage.NewStore(context.Background(), new(PersistentStorageMock))
+	m := repository.NewMockPersistentStorage(t)
+	m.EXPECT().LoadData(context.Background()).Return(make(map[string]string), nil)
+	m.On("SaveEntry", mock.Anything, mock.AnythingOfType("model.Entry")).
+		Return(nil)
+
+	store, _ := storage.NewStore(context.Background(), m)
 	if err := store.Save(
 		context.Background(),
 		"shorturl",
@@ -213,7 +208,12 @@ func TestRedirectURL(t *testing.T) {
 func TestGzipCompression(t *testing.T) {
 	config.ParseFlags()
 
-	store := storage.NewStore(context.Background(), new(PersistentStorageMock))
+	m := repository.NewMockPersistentStorage(t)
+	m.EXPECT().LoadData(context.Background()).Return(make(map[string]string), nil)
+	m.On("SaveEntry", mock.Anything, mock.AnythingOfType("model.Entry")).
+		Return(nil)
+
+	store, _ := storage.NewStore(context.Background(), m)
 
 	h := &handler.Handler{
 		Store: store,
