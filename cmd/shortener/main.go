@@ -34,11 +34,11 @@ func main() {
 	config.GetEnvParams()
 
 	if err := logger.Init(config.FlagLogLevel); err != nil {
-		panic(err)
+		logger.Log.Fatal(err.Error(), zap.String("event", "logger initialization"))
 	}
 
 	if err := auth.Init(); err != nil {
-		panic(err)
+		logger.Log.Fatal(err.Error(), zap.String("event", "init auth"))
 	}
 
 	if err := run(ctx); err != nil {

@@ -20,8 +20,11 @@ import (
 	"go.uber.org/zap"
 )
 
-const workerCount = 3
-const tickerDeletionBatchTime = 5 * time.Second
+const (
+	workerCount             = 3
+	chanSize                = 3 // equal to worker, adjustable
+	tickerDeletionBatchTime = 5 * time.Second
+)
 
 type Handler struct {
 	Store    storage.StoreInterface
@@ -31,7 +34,7 @@ type Handler struct {
 func NewHandler(store storage.StoreInterface) *Handler {
 	handler := &Handler{
 		Store:    store,
-		deleteCh: make(chan storage.DeleteBatchItem, 100),
+		deleteCh: make(chan storage.DeleteBatchItem, chanSize),
 	}
 
 	for w := 1; w <= workerCount; w++ {
@@ -42,6 +45,14 @@ func NewHandler(store storage.StoreInterface) *Handler {
 }
 
 func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
+	userID, ok := auth.GetUserIDFromContext(req.Context())
+	if !ok || userID == "" {
+		code := http.StatusUnauthorized
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
 	longURLRaw, err := io.ReadAll(req.Body)
 	if err != nil {
 		res.Write([]byte(err.Error()))
@@ -66,7 +77,7 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	errS := h.Store.Save(req.Context(), shortURL, longURL)
+	errS := h.Store.Save(req.Context(), shortURL, longURL, userID)
 	if errS != nil {
 		if errors.Is(errS, repository.ErrNonUnique) {
 			oldShortURL, errG := h.Store.GetShortByLongURL(req.Context(), longURL)
@@ -122,7 +133,13 @@ func (h *Handler) RedirectURL(res http.ResponseWriter, req *http.Request) {
 }
 
 func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
-	logger.Log.Debug("decoding request")
+	userID, ok := auth.GetUserIDFromContext(req.Context())
+	if !ok || userID == "" {
+		code := http.StatusUnauthorized
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
 
 	var shreq model.ShortenRequest
 
@@ -144,7 +161,7 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	errS := h.Store.Save(req.Context(), shortURL, shreq.URL)
+	errS := h.Store.Save(req.Context(), shortURL, shreq.URL, userID)
 	if errS != nil {
 		if errors.Is(errS, repository.ErrNonUnique) {
 			oldShortURL, errG := h.Store.GetShortByLongURL(req.Context(), shreq.URL)
@@ -189,11 +206,17 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 
 		return
 	}
-
-	logger.Log.Debug("sending HTTP 201 response")
 }
 
 func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
+	userID, ok := auth.GetUserIDFromContext(req.Context())
+	if !ok || userID == "" {
+		code := http.StatusUnauthorized
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
 	var shbreq model.ShortenBatchRequest
 
 	dec := json.NewDecoder(req.Body)
@@ -232,7 +255,7 @@ func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
 		batchItems = append(batchItems, batchItem)
 	}
 
-	err := h.Store.SaveBatch(req.Context(), batchItems)
+	err := h.Store.SaveBatch(req.Context(), batchItems, userID)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 
@@ -251,16 +274,17 @@ func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
 }
 
 func (h *Handler) GetUserURLs(res http.ResponseWriter, req *http.Request) {
-	urls, err := h.Store.GetURLsByUser(req.Context())
+	userID, ok := auth.GetUserIDFromContext(req.Context())
+	if !ok || userID == "" {
+		code := http.StatusUnauthorized
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
+	urls, err := h.Store.GetURLsByUser(req.Context(), userID)
 	if err != nil {
-		logger.Log.Error(err.Error(), zap.String("event", "get URLs by user"))
-
-		if errors.Is(err, storage.ErrNoCurrentUser) {
-			code := http.StatusUnauthorized
-			http.Error(res, http.StatusText(code), code)
-
-			return
-		}
+		logger.Log.Debug(err.Error(), zap.String("event", "get URLs by user"))
 
 		code := http.StatusInternalServerError
 		http.Error(res, http.StatusText(code), code)
@@ -287,7 +311,7 @@ func (h *Handler) GetUserURLs(res http.ResponseWriter, req *http.Request) {
 }
 
 func (h *Handler) DeleteUserURLs(res http.ResponseWriter, req *http.Request) {
-	userID, ok := req.Context().Value(auth.UserIDKey).(string)
+	userID, ok := auth.GetUserIDFromContext(req.Context())
 	if !ok || userID == "" {
 		code := http.StatusUnauthorized
 		http.Error(res, http.StatusText(code), code)

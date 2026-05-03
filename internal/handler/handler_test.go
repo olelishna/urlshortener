@@ -31,11 +31,12 @@ import (
 
 func TestShortenURL(t *testing.T) {
 	m := repository.NewMockPersistentStorage(t)
-	m.EXPECT().LoadData(context.Background()).Return(make(map[string]string), nil)
-	m.On("SaveEntry", mock.Anything, mock.AnythingOfType("model.Entry")).
-		Return(nil)
+	m.EXPECT().LoadData(mock.Anything).Return(make(map[string]string), nil)
+	m.EXPECT().SaveEntry(mock.Anything, mock.AnythingOfType("model.Entry")).Return(nil)
 
-	store, _ := storage.NewStore(context.Background(), m)
+	store, err := storage.NewStore(context.Background(), m)
+	require.NoError(t, err)
+
 	h := &handler.Handler{
 		Store: store,
 	}
@@ -96,8 +97,10 @@ func TestShortenURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, "/", bytes.NewBufferString(tt.body))
 
-			uuid1, _ := uuid.NewUUID()
-			ctx := context.WithValue(req.Context(), auth.UserIDKey, uuid1.String())
+			uuid1, err := uuid.NewUUID()
+			require.NoError(t, err)
+
+			ctx := auth.SetUserIDToContext(req.Context(), uuid1.String())
 			req = req.WithContext(ctx)
 
 			rr := httptest.NewRecorder()
@@ -127,21 +130,26 @@ func TestShortenURL(t *testing.T) {
 }
 
 func TestRedirectURL(t *testing.T) {
-	uuid1, _ := uuid.NewUUID()
-	ctx := context.WithValue(t.Context(), auth.UserIDKey, uuid1.String())
+	uuid1, err := uuid.NewUUID()
+	require.NoError(t, err)
+
+	userID := uuid1.String()
+	ctx := auth.SetUserIDToContext(t.Context(), userID)
 
 	m := repository.NewMockPersistentStorage(t)
-	m.EXPECT().LoadData(ctx).Return(make(map[string]string), nil)
-	m.On("SaveEntry", mock.Anything, mock.AnythingOfType("model.Entry")).Return(nil)
-	m.On("GetLongURL", mock.Anything, "12345678").Return("", pgx.ErrNoRows).Maybe()
-	m.On("GetLongURL", mock.Anything, "shorturl").Return("https://practicum.yandex.ru/", nil).Maybe()
+	m.EXPECT().LoadData(mock.Anything).Return(make(map[string]string), nil)
+	m.EXPECT().SaveEntry(mock.Anything, mock.AnythingOfType("model.Entry")).Return(nil)
+	m.EXPECT().GetLongURL(mock.Anything, "12345678").Return("", pgx.ErrNoRows).Maybe()
+	m.EXPECT().GetLongURL(mock.Anything, "shorturl").Return("https://practicum.yandex.ru/", nil).Maybe()
 
-	store, _ := storage.NewStore(ctx, m)
+	store, err := storage.NewStore(ctx, m)
+	require.NoError(t, err)
 
 	if err := store.Save(
 		ctx,
 		"shorturl",
 		"https://practicum.yandex.ru/",
+		userID,
 	); err != nil {
 		return
 	}
@@ -198,7 +206,7 @@ func TestRedirectURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, "/"+tt.hash, nil)
 
-			ctx := context.WithValue(req.Context(), auth.UserIDKey, uuid1.String())
+			ctx := auth.SetUserIDToContext(t.Context(), userID)
 			req = req.WithContext(ctx)
 
 			rr := httptest.NewRecorder()
@@ -217,15 +225,18 @@ func TestRedirectURL(t *testing.T) {
 func TestGzipCompression(t *testing.T) {
 	config.ParseFlags()
 
-	uuid1, _ := uuid.NewUUID()
-	ctx := context.WithValue(t.Context(), auth.UserIDKey, uuid1.String())
+	uuid1, err := uuid.NewUUID()
+	require.NoError(t, err)
+
+	userID := uuid1.String()
+	ctx := auth.SetUserIDToContext(t.Context(), userID)
 
 	m := repository.NewMockPersistentStorage(t)
 	m.EXPECT().LoadData(ctx).Return(make(map[string]string), nil)
-	m.On("SaveEntry", mock.Anything, mock.AnythingOfType("model.Entry")).
-		Return(nil)
+	m.EXPECT().SaveEntry(mock.Anything, mock.AnythingOfType("model.Entry")).Return(nil)
 
-	store, _ := storage.NewStore(ctx, m)
+	store, err := storage.NewStore(ctx, m)
+	require.NoError(t, err)
 
 	h := &handler.Handler{
 		Store: store,
@@ -256,8 +267,6 @@ func TestGzipCompression(t *testing.T) {
 		require.NoError(t, err)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten", bytes.NewBufferString(requestBody))
-
-		ctx := context.WithValue(req.Context(), auth.UserIDKey, uuid1.String())
 		req = req.WithContext(ctx)
 
 		rr := httptest.NewRecorder()
@@ -287,8 +296,6 @@ func TestGzipCompression(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/shorten", bytes.NewBufferString(requestBody))
 
 		req.Header.Set("Accept-Encoding", "gzip")
-
-		ctx := context.WithValue(req.Context(), auth.UserIDKey, uuid1.String())
 		req = req.WithContext(ctx)
 
 		rr := httptest.NewRecorder()

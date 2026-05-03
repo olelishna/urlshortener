@@ -8,6 +8,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/olelishna/urlshortener/internal/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -26,7 +29,7 @@ func main() {
 
 	long, err := reader.ReadString('\n')
 	if err != nil {
-		panic(err)
+		logger.Log.Fatal(err.Error(), zap.String("event", "read long"))
 	}
 
 	long = strings.TrimSuffix(long, "\n")
@@ -42,14 +45,14 @@ func main() {
 
 	request, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(long))
 	if err != nil {
-		panic(err)
+		logger.Log.Fatal(err.Error(), zap.String("event", "create request"))
 	}
 
 	request.Header.Add("Content-Type", "text/plain")
 
 	response, err := client.Do(request)
 	if err != nil {
-		panic(err)
+		logger.Log.Fatal(err.Error(), zap.String("event", "do request"))
 	}
 
 	fmt.Println("Статус-код ", response.Status)
@@ -57,7 +60,7 @@ func main() {
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		panic(err)
+		logger.Log.Fatal(err.Error(), zap.String("event", "read response"))
 	}
 
 	fmt.Println(string(body))

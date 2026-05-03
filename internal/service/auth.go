@@ -14,12 +14,27 @@ import (
 	"github.com/olelishna/urlshortener/internal/config"
 )
 
-const UserIDKey string = "userUUID"
+type contextKey string
+
+const userIDKey contextKey = "userUUID"
 
 const (
 	authCookie       = "auth_cookie"
 	authCookieMaxAge = 3600 * 24 * 30
 )
+
+func GetUserIDFromContext(ctx context.Context) (string, bool) {
+	v := ctx.Value(userIDKey)
+	if v == nil {
+		return "", false
+	}
+	userID, ok := v.(string)
+	return userID, ok
+}
+
+func SetUserIDToContext(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, userIDKey, userID)
+}
 
 var aesBlock cipher.Block
 
@@ -52,7 +67,7 @@ func MiddlewareCheckAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), UserIDKey, id)
+		ctx := SetUserIDToContext(r.Context(), id)
 
 		next.ServeHTTP(ow, r.WithContext(ctx))
 	}

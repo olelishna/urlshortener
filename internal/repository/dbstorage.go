@@ -182,7 +182,7 @@ func (db *DBStorage) GetURLsByUser(ctx context.Context, userID string) ([]UserLi
 	ctxT, cancel := context.WithTimeout(ctx, QueryTimeOut)
 	defer cancel()
 
-	rows, err := db.pool.Query(ctxT, "SELECT short_url, original_url FROM urls where user_uuid = $1", userID)
+	rows, err := db.pool.Query(ctxT, "SELECT short_url, original_url FROM urls where user_uuid = $1 and is_deleted = $2", userID, false)
 	if err != nil {
 		return nil, err
 	}
