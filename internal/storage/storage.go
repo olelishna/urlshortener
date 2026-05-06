@@ -3,11 +3,14 @@ package storage
 import (
 	"context"
 	"errors"
+	"net/url"
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/model"
 	"github.com/olelishna/urlshortener/internal/repository"
+	auth "github.com/olelishna/urlshortener/internal/service"
 )
 
 type StoreInterface interface {
@@ -15,6 +18,7 @@ type StoreInterface interface {
 	SaveBatch(ctx context.Context, items []SaveBatchItem) error
 	Get(ctx context.Context, shortURL string) (string, bool, error)
 	GetShortByLongURL(ctx context.Context, longURL string) (string, error)
+	GetURLsByUser(ctx context.Context) ([]UserLinksListItem, error)
 }
 
 type SaveBatchItem struct {
@@ -22,11 +26,21 @@ type SaveBatchItem struct {
 	LongURL  string
 }
 
+type UserLinksListItem struct {
+	ShortURL    string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
 type Store struct {
 	urls map[string]string
 	ps   repository.PersistentStorage
 	mu   sync.RWMutex
 }
+
+var (
+	ErrNoPs          = errors.New("ps is nil")
+	ErrNoCurrentUser = errors.New("no user id found in context")
+)
 
 func NewStore(ctx context.Context, ps repository.PersistentStorage) (StoreInterface, error) {
 	urls := make(map[string]string)
@@ -47,6 +61,16 @@ func NewStore(ctx context.Context, ps repository.PersistentStorage) (StoreInterf
 }
 
 func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error {
+	userID, ok := ctx.Value(auth.UserIDKey).(string)
+	if !ok {
+		return ErrNoCurrentUser
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -62,6 +86,7 @@ func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error
 			UUID:        uuidEntry,
 			ShortURL:    shortURL,
 			OriginalURL: longURL,
+			UserUUID:    userUUID,
 		}
 
 		if s.ps != nil {
@@ -84,6 +109,16 @@ func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error
 }
 
 func (s *Store) SaveBatch(ctx context.Context, items []SaveBatchItem) error {
+	userID, ok := ctx.Value(auth.UserIDKey).(string)
+	if !ok {
+		return ErrNoCurrentUser
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -102,6 +137,7 @@ func (s *Store) SaveBatch(ctx context.Context, items []SaveBatchItem) error {
 				UUID:        uuidEntry,
 				ShortURL:    item.ShortURL,
 				OriginalURL: item.LongURL,
+				UserUUID:    userUUID,
 			}
 
 			entries = append(entries, entry)
@@ -151,5 +187,33 @@ func (s *Store) GetShortByLongURL(ctx context.Context, longURL string) (string, 
 		return short, nil
 	}
 
-	return "", errors.New("ps is nil")
+	return "", ErrNoPs
+}
+
+func (s *Store) GetURLsByUser(ctx context.Context) ([]UserLinksListItem, error) {
+	if s.ps == nil {
+		return nil, ErrNoPs
+	}
+
+	userID, ok := ctx.Value(auth.UserIDKey).(string)
+	if !ok {
+		return nil, ErrNoCurrentUser
+	}
+
+	urls, err := s.ps.GetURLsByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []UserLinksListItem
+
+	for _, urlItem := range urls {
+		uRes, _ := url.JoinPath(config.FlagBaseURLResult, urlItem.RawShortURL)
+		result = append(result, UserLinksListItem{
+			ShortURL:    uRes,
+			OriginalURL: urlItem.OriginalURL,
+		})
+	}
+
+	return result, nil
 }

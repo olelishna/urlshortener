@@ -19,6 +19,7 @@ import (
 	"github.com/olelishna/urlshortener/internal/handler"
 	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/repository"
+	auth "github.com/olelishna/urlshortener/internal/service"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -30,8 +31,13 @@ func main() {
 	ctx := context.Background()
 
 	config.ParseFlags()
+	config.GetEnvParams()
 
 	if err := logger.Init(config.FlagLogLevel); err != nil {
+		panic(err)
+	}
+
+	if err := auth.Init(); err != nil {
 		panic(err)
 	}
 
@@ -92,6 +98,7 @@ func run(ctx context.Context) error {
 		middleware.CleanPath,
 		middleware.Recoverer,
 		logger.MiddlewareLogger,
+		auth.MiddlewareCheckAuth,
 		compress.MiddlewareGzip,
 	)
 
@@ -99,6 +106,7 @@ func run(ctx context.Context) error {
 	r.Get("/{id}", hand.RedirectURL)
 	r.Post("/api/shorten", hand.ShortenURLJson)
 	r.Post("/api/shorten/batch", hand.ShortenURLBatch)
+	r.Get("/api/user/urls", hand.GetUserURLs)
 	r.Get("/ping", dbHand.PingDB)
 
 	nCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, os.Kill)

@@ -11,6 +11,7 @@ type Entry struct {
 	UUID        uuid.UUID `json:"uuid"`
 	ShortURL    string    `json:"short_url"`
 	OriginalURL string    `json:"original_url"`
+	UserUUID    uuid.UUID `json:"user_uuid,omitempty"`
 }
 
 func GenerateShortURL() (string, error) {
