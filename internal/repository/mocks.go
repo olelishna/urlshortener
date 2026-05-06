@@ -38,6 +38,129 @@ func (_m *MockPersistentStorage) EXPECT() *MockPersistentStorage_Expecter {
 	return &MockPersistentStorage_Expecter{mock: &_m.Mock}
 }
 
+// DeleteURLs provides a mock function for the type MockPersistentStorage
+func (_mock *MockPersistentStorage) DeleteURLs(ctx context.Context, urlsByUser map[string][]string) error {
+	ret := _mock.Called(ctx, urlsByUser)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteURLs")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string][]string) error); ok {
+		r0 = returnFunc(ctx, urlsByUser)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPersistentStorage_DeleteURLs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteURLs'
+type MockPersistentStorage_DeleteURLs_Call struct {
+	*mock.Call
+}
+
+// DeleteURLs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - urlsByUser map[string][]string
+func (_e *MockPersistentStorage_Expecter) DeleteURLs(ctx interface{}, urlsByUser interface{}) *MockPersistentStorage_DeleteURLs_Call {
+	return &MockPersistentStorage_DeleteURLs_Call{Call: _e.mock.On("DeleteURLs", ctx, urlsByUser)}
+}
+
+func (_c *MockPersistentStorage_DeleteURLs_Call) Run(run func(ctx context.Context, urlsByUser map[string][]string)) *MockPersistentStorage_DeleteURLs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 map[string][]string
+		if args[1] != nil {
+			arg1 = args[1].(map[string][]string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPersistentStorage_DeleteURLs_Call) Return(err error) *MockPersistentStorage_DeleteURLs_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPersistentStorage_DeleteURLs_Call) RunAndReturn(run func(ctx context.Context, urlsByUser map[string][]string) error) *MockPersistentStorage_DeleteURLs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetLongURL provides a mock function for the type MockPersistentStorage
+func (_mock *MockPersistentStorage) GetLongURL(ctx context.Context, shortURL string) (string, error) {
+	ret := _mock.Called(ctx, shortURL)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLongURL")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
+		return returnFunc(ctx, shortURL)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
+		r0 = returnFunc(ctx, shortURL)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, shortURL)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPersistentStorage_GetLongURL_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLongURL'
+type MockPersistentStorage_GetLongURL_Call struct {
+	*mock.Call
+}
+
+// GetLongURL is a helper method to define mock.On call
+//   - ctx context.Context
+//   - shortURL string
+func (_e *MockPersistentStorage_Expecter) GetLongURL(ctx interface{}, shortURL interface{}) *MockPersistentStorage_GetLongURL_Call {
+	return &MockPersistentStorage_GetLongURL_Call{Call: _e.mock.On("GetLongURL", ctx, shortURL)}
+}
+
+func (_c *MockPersistentStorage_GetLongURL_Call) Run(run func(ctx context.Context, shortURL string)) *MockPersistentStorage_GetLongURL_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPersistentStorage_GetLongURL_Call) Return(s string, err error) *MockPersistentStorage_GetLongURL_Call {
+	_c.Call.Return(s, err)
+	return _c
+}
+
+func (_c *MockPersistentStorage_GetLongURL_Call) RunAndReturn(run func(ctx context.Context, shortURL string) (string, error)) *MockPersistentStorage_GetLongURL_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetShortByLongURL provides a mock function for the type MockPersistentStorage
 func (_mock *MockPersistentStorage) GetShortByLongURL(ctx context.Context, longURL string) (string, error) {
 	ret := _mock.Called(ctx, longURL)

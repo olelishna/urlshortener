@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lib/pq"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
@@ -28,6 +29,7 @@ var (
 	ErrNonUnique   = errors.New("data conflict")
 	ErrEmptyString = errors.New("no empty string allowed")
 	ErrNoUser      = errors.New("user uuid shouldn't be empty")
+	ErrUrlDeleted  = errors.New("url is deleted")
 )
 
 func NewDBStorage(ctx context.Context, pool *pgxpool.Pool) (*DBStorage, error) {
@@ -180,7 +182,7 @@ func (db *DBStorage) GetURLsByUser(ctx context.Context, userID string) ([]UserLi
 	ctxT, cancel := context.WithTimeout(ctx, QueryTimeOut)
 	defer cancel()
 
-	rows, err := db.pool.Query(ctxT, "SELECT short_url, original_url FROM urls where user_uuid = $1", userID)
+	rows, err := db.pool.Query(ctxT, "SELECT short_url, original_url FROM urls where user_uuid = $1 and is_deleted = $2", userID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -199,5 +201,37 @@ func (db *DBStorage) GetURLsByUser(ctx context.Context, userID string) ([]UserLi
 	}
 
 	return urls, nil
+}
 
+func (db *DBStorage) DeleteURLs(ctx context.Context, urlsByUser map[string][]string) error {
+	for userID, shorts := range urlsByUser {
+		query := `UPDATE urls SET is_deleted = true 
+                  WHERE user_uuid = $1 AND short_url = ANY($2)`
+		_, err := db.pool.Exec(ctx, query, userID, pq.Array(shorts))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (db *DBStorage) GetLongURL(ctx context.Context, shortURL string) (string, error) {
+	if shortURL == "" {
+		return "", ErrEmptyString
+	}
+
+	var longURL string
+	var isDeleted bool
+
+	row := db.pool.QueryRow(ctx, "SELECT original_url, is_deleted FROM urls where short_url = $1", shortURL)
+	if err := row.Scan(&longURL, &isDeleted); err != nil {
+		return "", err
+	}
+
+	if isDeleted {
+		return "", ErrUrlDeleted
+	}
+
+	return longURL, nil
 }

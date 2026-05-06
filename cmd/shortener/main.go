@@ -34,11 +34,11 @@ func main() {
 	config.GetEnvParams()
 
 	if err := logger.Init(config.FlagLogLevel); err != nil {
-		panic(err)
+		logger.Log.Fatal(err.Error(), zap.String("event", "logger initialization"))
 	}
 
 	if err := auth.Init(); err != nil {
-		panic(err)
+		logger.Log.Fatal(err.Error(), zap.String("event", "init auth"))
 	}
 
 	if err := run(ctx); err != nil {
@@ -107,6 +107,7 @@ func run(ctx context.Context) error {
 	r.Post("/api/shorten", hand.ShortenURLJson)
 	r.Post("/api/shorten/batch", hand.ShortenURLBatch)
 	r.Get("/api/user/urls", hand.GetUserURLs)
+	r.Delete("/api/user/urls", hand.DeleteUserURLs)
 	r.Get("/ping", dbHand.PingDB)
 
 	nCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, os.Kill)

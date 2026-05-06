@@ -10,15 +10,15 @@ import (
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/model"
 	"github.com/olelishna/urlshortener/internal/repository"
-	auth "github.com/olelishna/urlshortener/internal/service"
 )
 
 type StoreInterface interface {
-	Save(ctx context.Context, shortURL string, longURL string) error
-	SaveBatch(ctx context.Context, items []SaveBatchItem) error
+	Save(ctx context.Context, shortURL string, longURL string, userID string) error
+	SaveBatch(ctx context.Context, items []SaveBatchItem, userID string) error
 	Get(ctx context.Context, shortURL string) (string, bool, error)
 	GetShortByLongURL(ctx context.Context, longURL string) (string, error)
-	GetURLsByUser(ctx context.Context) ([]UserLinksListItem, error)
+	GetURLsByUser(ctx context.Context, userID string) ([]UserLinksListItem, error)
+	DeleteItems(ctx context.Context, batch []DeleteBatchItem) error
 }
 
 type SaveBatchItem struct {
@@ -31,16 +31,18 @@ type UserLinksListItem struct {
 	OriginalURL string `json:"original_url"`
 }
 
+type DeleteBatchItem struct {
+	UserID    string
+	ShortURLs []string
+}
+
 type Store struct {
 	urls map[string]string
 	ps   repository.PersistentStorage
 	mu   sync.RWMutex
 }
 
-var (
-	ErrNoPs          = errors.New("ps is nil")
-	ErrNoCurrentUser = errors.New("no user id found in context")
-)
+var ErrNoPs = errors.New("ps is nil")
 
 func NewStore(ctx context.Context, ps repository.PersistentStorage) (StoreInterface, error) {
 	urls := make(map[string]string)
@@ -60,12 +62,7 @@ func NewStore(ctx context.Context, ps repository.PersistentStorage) (StoreInterf
 	}, nil
 }
 
-func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error {
-	userID, ok := ctx.Value(auth.UserIDKey).(string)
-	if !ok {
-		return ErrNoCurrentUser
-	}
-
+func (s *Store) Save(ctx context.Context, shortURL string, longURL string, userID string) error {
 	userUUID, err := uuid.Parse(userID)
 	if err != nil {
 		return err
@@ -108,12 +105,7 @@ func (s *Store) Save(ctx context.Context, shortURL string, longURL string) error
 	}
 }
 
-func (s *Store) SaveBatch(ctx context.Context, items []SaveBatchItem) error {
-	userID, ok := ctx.Value(auth.UserIDKey).(string)
-	if !ok {
-		return ErrNoCurrentUser
-	}
-
+func (s *Store) SaveBatch(ctx context.Context, items []SaveBatchItem, userID string) error {
 	userUUID, err := uuid.Parse(userID)
 	if err != nil {
 		return err
@@ -174,7 +166,17 @@ func (s *Store) Get(ctx context.Context, shortURL string) (string, bool, error) 
 		return "", false, errors.New("shorturl " + shortURL + " not found")
 	}
 
-	return longURL, exists, nil
+	if s.ps != nil {
+		long, err := s.ps.GetLongURL(ctx, shortURL)
+		if err != nil {
+			return "", false, err
+		}
+		if long != "" {
+			longURL = long
+		}
+	}
+
+	return longURL, true, nil
 }
 
 func (s *Store) GetShortByLongURL(ctx context.Context, longURL string) (string, error) {
@@ -190,14 +192,9 @@ func (s *Store) GetShortByLongURL(ctx context.Context, longURL string) (string, 
 	return "", ErrNoPs
 }
 
-func (s *Store) GetURLsByUser(ctx context.Context) ([]UserLinksListItem, error) {
+func (s *Store) GetURLsByUser(ctx context.Context, userID string) ([]UserLinksListItem, error) {
 	if s.ps == nil {
 		return nil, ErrNoPs
-	}
-
-	userID, ok := ctx.Value(auth.UserIDKey).(string)
-	if !ok {
-		return nil, ErrNoCurrentUser
 	}
 
 	urls, err := s.ps.GetURLsByUser(ctx, userID)
@@ -216,4 +213,38 @@ func (s *Store) GetURLsByUser(ctx context.Context) ([]UserLinksListItem, error) 
 	}
 
 	return result, nil
+}
+
+func (s *Store) DeleteItems(ctx context.Context, batch []DeleteBatchItem) error {
+	if s.ps == nil {
+		return ErrNoPs
+	}
+
+	type key struct {
+		userID string
+		short  string
+	}
+
+	unique := make(map[key]struct{})
+	for _, t := range batch {
+		for _, short := range t.ShortURLs {
+			unique[key{t.UserID, short}] = struct{}{}
+		}
+	}
+
+	if len(unique) == 0 {
+		return nil
+	}
+
+	byUser := make(map[string][]string)
+	for k := range unique {
+		byUser[k.userID] = append(byUser[k.userID], k.short)
+	}
+
+	err := s.ps.DeleteURLs(ctx, byUser)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

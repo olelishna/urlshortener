@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,19 +15,44 @@ import (
 	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
 	"github.com/olelishna/urlshortener/internal/repository"
+	auth "github.com/olelishna/urlshortener/internal/service"
 	"github.com/olelishna/urlshortener/internal/storage"
 	"go.uber.org/zap"
 )
 
+const (
+	workerCount             = 3
+	chanSize                = 3 // equal to worker, adjustable
+	tickerDeletionBatchTime = 5 * time.Second
+)
+
 type Handler struct {
-	Store storage.StoreInterface
+	Store    storage.StoreInterface
+	deleteCh chan storage.DeleteBatchItem
 }
 
 func NewHandler(store storage.StoreInterface) *Handler {
-	return &Handler{Store: store}
+	handler := &Handler{
+		Store:    store,
+		deleteCh: make(chan storage.DeleteBatchItem, chanSize),
+	}
+
+	for w := 1; w <= workerCount; w++ {
+		go handler.deleteMessagesWorker(w)
+	}
+
+	return handler
 }
 
 func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
+	userID, ok := auth.GetUserIDFromContext(req.Context())
+	if !ok || userID == "" {
+		code := http.StatusUnauthorized
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
 	longURLRaw, err := io.ReadAll(req.Body)
 	if err != nil {
 		res.Write([]byte(err.Error()))
@@ -50,7 +77,7 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	errS := h.Store.Save(req.Context(), shortURL, longURL)
+	errS := h.Store.Save(req.Context(), shortURL, longURL, userID)
 	if errS != nil {
 		if errors.Is(errS, repository.ErrNonUnique) {
 			oldShortURL, errG := h.Store.GetShortByLongURL(req.Context(), longURL)
@@ -84,6 +111,13 @@ func (h *Handler) RedirectURL(res http.ResponseWriter, req *http.Request) {
 
 	longURL, _, err := h.Store.Get(req.Context(), shortURL)
 	if err != nil {
+		if errors.Is(err, repository.ErrUrlDeleted) {
+			code := http.StatusGone
+			http.Error(res, http.StatusText(code), code)
+
+			return
+		}
+
 		logger.Log.Error(
 			err.Error(),
 			zap.String("event", "redirect url"),
@@ -99,7 +133,13 @@ func (h *Handler) RedirectURL(res http.ResponseWriter, req *http.Request) {
 }
 
 func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
-	logger.Log.Debug("decoding request")
+	userID, ok := auth.GetUserIDFromContext(req.Context())
+	if !ok || userID == "" {
+		code := http.StatusUnauthorized
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
 
 	var shreq model.ShortenRequest
 
@@ -121,7 +161,7 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	errS := h.Store.Save(req.Context(), shortURL, shreq.URL)
+	errS := h.Store.Save(req.Context(), shortURL, shreq.URL, userID)
 	if errS != nil {
 		if errors.Is(errS, repository.ErrNonUnique) {
 			oldShortURL, errG := h.Store.GetShortByLongURL(req.Context(), shreq.URL)
@@ -166,11 +206,17 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 
 		return
 	}
-
-	logger.Log.Debug("sending HTTP 201 response")
 }
 
 func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
+	userID, ok := auth.GetUserIDFromContext(req.Context())
+	if !ok || userID == "" {
+		code := http.StatusUnauthorized
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
 	var shbreq model.ShortenBatchRequest
 
 	dec := json.NewDecoder(req.Body)
@@ -209,7 +255,7 @@ func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
 		batchItems = append(batchItems, batchItem)
 	}
 
-	err := h.Store.SaveBatch(req.Context(), batchItems)
+	err := h.Store.SaveBatch(req.Context(), batchItems, userID)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 
@@ -228,16 +274,17 @@ func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
 }
 
 func (h *Handler) GetUserURLs(res http.ResponseWriter, req *http.Request) {
-	urls, err := h.Store.GetURLsByUser(req.Context())
+	userID, ok := auth.GetUserIDFromContext(req.Context())
+	if !ok || userID == "" {
+		code := http.StatusUnauthorized
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
+	urls, err := h.Store.GetURLsByUser(req.Context(), userID)
 	if err != nil {
-		logger.Log.Error(err.Error(), zap.String("event", "get URLs by user"))
-
-		if errors.Is(err, storage.ErrNoCurrentUser) {
-			code := http.StatusUnauthorized
-			http.Error(res, http.StatusText(code), code)
-
-			return
-		}
+		logger.Log.Debug(err.Error(), zap.String("event", "get URLs by user"))
 
 		code := http.StatusInternalServerError
 		http.Error(res, http.StatusText(code), code)
@@ -261,6 +308,86 @@ func (h *Handler) GetUserURLs(res http.ResponseWriter, req *http.Request) {
 
 		return
 	}
+}
+
+func (h *Handler) DeleteUserURLs(res http.ResponseWriter, req *http.Request) {
+	userID, ok := auth.GetUserIDFromContext(req.Context())
+	if !ok || userID == "" {
+		code := http.StatusUnauthorized
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
+	var urls []string
+
+	if err := json.NewDecoder(req.Body).Decode(&urls); err != nil {
+		logger.Log.Debug("cannot decode request JSON body", zap.Error(err))
+
+		code := http.StatusBadRequest
+		http.Error(res, http.StatusText(code), code)
+
+		return
+	}
+
+	if len(urls) == 0 {
+		http.Error(res, "Empty list", http.StatusBadRequest)
+		return
+	}
+
+	select {
+	case h.deleteCh <- storage.DeleteBatchItem{UserID: userID, ShortURLs: urls}:
+		res.WriteHeader(http.StatusAccepted)
+	default:
+		logger.Log.Debug("delete channel full, dropping request")
+
+		code := http.StatusServiceUnavailable
+		http.Error(res, http.StatusText(code), code)
+	}
+}
+
+func (h *Handler) deleteMessagesWorker(id int) {
+
+	logger.Log.Info("Starting worker", zap.Int("id", id))
+
+	ticker := time.NewTicker(tickerDeletionBatchTime)
+
+	var batch []storage.DeleteBatchItem
+
+	go func() {
+		for {
+			select {
+			case task := <-h.deleteCh:
+				batch = append(batch, task)
+
+				if len(batch) >= 50 {
+					err := h.Store.DeleteItems(context.Background(), batch)
+					if err != nil {
+						logger.Log.Error("cannot delete items", zap.Error(err))
+						continue
+					}
+
+					batch = nil
+
+					logger.Log.Info("Worker job is done", zap.Int("id", id))
+				}
+			case <-ticker.C:
+				if len(batch) == 0 {
+					continue
+				}
+
+				err := h.Store.DeleteItems(context.Background(), batch)
+				if err != nil {
+					logger.Log.Error("cannot delete items", zap.Error(err))
+					continue
+				}
+
+				batch = nil
+
+				logger.Log.Info("Worker job is done", zap.Int("id", id))
+			}
+		}
+	}()
 }
 
 type DbHandler struct {
