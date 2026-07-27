@@ -11,6 +11,8 @@ var (
 	FlagLogLevel        string
 	FlagFileStoragePath string
 	FlagDatabaseDSN     string
+	FlagAuditFile       string
+	FlagAuditURL        string
 )
 
 func ParseFlags() {
@@ -24,6 +26,8 @@ func ParseFlags() {
 	flag.StringVar(&FlagLogLevel, "l", "info", "log level")
 	flag.StringVar(&FlagFileStoragePath, "f", "", "file storage path")
 	flag.StringVar(&FlagDatabaseDSN, "d", "", "database DSN")
+	flag.StringVar(&FlagAuditFile, "audit-file", "", "audit log file path")
+	flag.StringVar(&FlagAuditURL, "audit-url", "", "audit remote server URL")
 
 	flag.Parse()
 
@@ -45,5 +49,13 @@ func ParseFlags() {
 
 	if envDatabaseDSN, ok := os.LookupEnv("DATABASE_DSN"); ok {
 		FlagDatabaseDSN = envDatabaseDSN
+	}
+
+	if envAuditFile, ok := os.LookupEnv("AUDIT_FILE"); ok {
+		FlagAuditFile = envAuditFile
+	}
+
+	if envAuditURL, ok := os.LookupEnv("AUDIT_URL"); ok {
+		FlagAuditURL = envAuditURL
 	}
 }

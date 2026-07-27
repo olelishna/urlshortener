@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/olelishna/urlshortener/internal/audit"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/logger"
 	"github.com/olelishna/urlshortener/internal/model"
@@ -29,12 +30,14 @@ const (
 type Handler struct {
 	Store    storage.StoreInterface
 	deleteCh chan storage.DeleteBatchItem
+	notifier *audit.Manager
 }
 
-func NewHandler(store storage.StoreInterface) *Handler {
+func NewHandler(store storage.StoreInterface, notifier *audit.Manager) *Handler {
 	handler := &Handler{
 		Store:    store,
 		deleteCh: make(chan storage.DeleteBatchItem, chanSize),
+		notifier: notifier,
 	}
 
 	for w := 1; w <= workerCount; w++ {
@@ -104,6 +107,8 @@ func (h *Handler) ShortenURL(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("content-type", "text/plain")
 	res.WriteHeader(http.StatusCreated)
 	res.Write([]byte(uRes))
+
+	h.notifier.Notify(audit.NewEvent("shorten", userID, longURL))
 }
 
 func (h *Handler) RedirectURL(res http.ResponseWriter, req *http.Request) {
@@ -130,6 +135,10 @@ func (h *Handler) RedirectURL(res http.ResponseWriter, req *http.Request) {
 	}
 
 	http.Redirect(res, req, longURL, http.StatusTemporaryRedirect)
+
+	userID, _ := auth.GetUserIDFromContext(req.Context())
+
+	h.notifier.Notify(audit.NewEvent("follow", userID, longURL))
 }
 
 func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
@@ -206,6 +215,8 @@ func (h *Handler) ShortenURLJson(res http.ResponseWriter, req *http.Request) {
 
 		return
 	}
+
+	h.notifier.Notify(audit.NewEvent("shorten", userID, shreq.URL))
 }
 
 func (h *Handler) ShortenURLBatch(res http.ResponseWriter, req *http.Request) {
