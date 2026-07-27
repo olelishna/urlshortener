@@ -14,6 +14,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/olelishna/urlshortener/internal/audit"
 	"github.com/olelishna/urlshortener/internal/compress"
 	"github.com/olelishna/urlshortener/internal/config"
 	"github.com/olelishna/urlshortener/internal/handler"
@@ -90,7 +91,26 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	hand := handler.NewHandler(store)
+	notifier := audit.NewManager()
+
+	if config.FlagAuditFile != "" {
+		fn, err := audit.NewFileNotifier(config.FlagAuditFile)
+		if err != nil {
+			logger.Log.Error(err.Error(), zap.String("event", "audit file notifier init"))
+		} else {
+			notifier.Register(fn)
+			logger.Log.Info("audit file notifier initialized")
+			defer fn.Close()
+		}
+	}
+
+	if config.FlagAuditURL != "" {
+		hn := audit.NewHTTPNotifier(config.FlagAuditURL)
+		notifier.Register(hn)
+		logger.Log.Info("audit http notifier initialized")
+	}
+
+	hand := handler.NewHandler(store, notifier)
 	dbHand := handler.NewDbHandler(pl)
 
 	r := chi.NewRouter()
